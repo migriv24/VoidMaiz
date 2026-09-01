@@ -1,0 +1,71 @@
+{
+  "manifest": "void/0.1",
+  "name": "voidmaiz",
+  "display_name": "Void Maiz",
+  "kind": "runtime",
+  "version": "0.1.0",
+  "license": "MIT",
+  "repository": "https://github.com/migriv24/VoidMaiz",
+  "description": "The node-graph view and interaction layer for Void Core applications: it draws a mantle as a graph, turns every gesture into a visible dispatcher command, and owns no model state of its own.",
+
+  "requires": [
+    {
+      "name": "voidcore",
+      "kind": "runtime",
+      "version": ">=0.2.12",
+      "sibling": "../VoidCore",
+      "cmake_var": "VOIDCORE_ROOT",
+      "link": "shared",
+      "note": "the model, the dispatcher and the state document. Desktop links the sibling's prebuilt libvoidcore.dll; an Android or cross build compiles the pure-C sources into a static lib instead, since there are no prebuilts for that substrate."
+    },
+    {
+      "name": "voidallomone",
+      "kind": "runtime",
+      "version": "*",
+      "sibling": "../VoidAllomone",
+      "cmake_var": "VOIDALLOMONE_ROOT",
+      "link": "static",
+      "note": "the derivation language, extracted from this repo 2026-08-29. Compiled from source with add_subdirectory and re-exported into maiz:: through forwarding headers, so hosts saw no change. Not yet published."
+    }
+  ],
+
+  "interacts_with": [
+    {
+      "name": "voidcore-reduce",
+      "kind": "capability",
+      "seam": "conformance-cases",
+      "direction": "inbound",
+      "note": "voidmaiz_reduce is a C++20 port of Void Core's portable reduce contract, tested against its pure-JSON cases at ../VoidCore/conformance/reduce/cases. No link and no shared binary — the seam is the case format. 17 of 25 cases pass as of 2026-09-01; boxes, the reserved separator and the patch rule are not ported yet."
+    }
+  ],
+
+  "provides": {
+    "libraries": [
+      "voidmaiz",
+      "voidmaiz_view",
+      "voidmaiz_imgui",
+      "voidmaiz_headless",
+      "voidmaiz_reduce",
+      "voidmaiz_allomone"
+    ],
+    "examples": {
+      "gui": "maiz_canvas",
+      "cli": "maiz_headless",
+      "describe": "maiz_headless --describe"
+    },
+    "documents": {
+      "state": "*.state.json"
+    },
+    "ships_beside_binary": [
+      "okf/"
+    ]
+  },
+
+  "platforms": ["windows-x64", "android-arm64"],
+
+  "update": {
+    "channel": "desktop",
+    "side_by_side": true,
+    "note": "a library, not an installed product: hosts vendor or sit beside it and ship their own updates. The update section here describes what its applications inherit, not something Void Maiz updates on its own."
+  }
+}

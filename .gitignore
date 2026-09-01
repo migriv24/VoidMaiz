@@ -1,0 +1,43 @@
+# build outputs
+build/
+out/
+*.obj
+*.o
+*.dll
+*.exe
+*.pdb
+
+# editor / OS noise
+.vscode/
+.vs/
+Thumbs.db
+.DS_Store
+
+# local scratch
+scratch/
+
+# ImGui layout files — per-user, per-host, and deliberately NOT tracked: a
+# committed one hid the fact that docking had never engaged (2026-08-06), by
+# giving every run a layout that looked plausible. Untracked keeps "first run
+# on a clean machine" an honest test. Delete yours to re-seed the default.
+imgui*.ini
+
+# ── WHAT THE PRE-PUBLISH PROBE CAUGHT (2026-09-01) ──────────────────────────
+#
+# A dry-run `git add -An` into a throwaway git-dir is the only honest way to
+# read a .gitignore. Two things it staged that must never be published:
+
+# CTest's scratch directory. `ctest` run from the repo root (rather than from
+# build/) writes Testing/Temporary/LastTest.log into the SOURCE tree, and that
+# log carries absolute paths under the builder's home directory.
+Testing/
+
+# Agent config: personal, not project. `.claude/settings.json` here is this
+# machine's permission allowlist — 108 lines of one-off invocations and
+# absolute paths under the author's home. It tells a stranger nothing about
+# Void Maiz and everything about one laptop. If a curated, path-free config is
+# ever worth sharing it can be added deliberately with `git add -f`.
+.claude/
+
+# Alternate build trees (build2/, build3/, …) alongside the canonical build/.
+build*/

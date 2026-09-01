@@ -1,0 +1,62 @@
+# .gitattributes — what a byte means, decided once (2026-09-01)
+#
+# WHY THIS EXISTS, and why it is dated the day before the first commit. This
+# tree grew on Windows with mixed endings: nearly everything is LF, but four
+# files are CRLF — include/voidmaiz/code.hpp, src/view/code.cpp and the two
+# okf/concepts/allomone/ notes. Nothing enforced either convention, so a single
+# ordinary `sed -i` on one of them rewrites every line in the file while
+# changing one. Before the first push that is invisible. After it, it is a
+# whole-file diff in somebody else's review, every time, forever.
+#
+# `text=auto` settles it: git stores text as LF and checks it out however the
+# platform wants. The working tree keeps behaving the way Windows expects; the
+# repository stops carrying the question.
+
+* text=auto
+
+# ── FILES WHOSE ENDINGS ARE PART OF THEIR CONTRACT ──────────────────────────
+# None ship today — there is no .sh or .bat in this tree yet. These are here so
+# that the first one added is right without anyone having to remember why.
+*.sh        text eol=lf
+*.bash      text eol=lf
+*.bat       text eol=crlf
+*.cmd       text eol=crlf
+*.ps1       text eol=crlf
+
+# ── EXPLICIT TEXT, so nothing here is ever guessed at ────────────────────────
+*.c         text
+*.h         text
+*.m         text
+*.cpp       text
+*.hpp       text
+*.py        text
+*.md        text
+*.txt       text
+*.json      text
+*.cmake     text
+*.in        text
+*.rc        text
+*.vs        text
+*.voidscript text
+CMakeLists.txt text
+.gitignore  text
+.gitattributes text
+
+# ── BINARY, never touched, never diffed as text ─────────────────────────────
+# None are committed today; vendoring a font or a demo image is the likely
+# first case, and Dear ImGui already carries .ttf upstream.
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.ico       binary
+*.ttf       binary
+*.otf       binary
+*.woff2     binary
+*.pdf       binary
+*.zip       binary
+*.a         binary
+*.lib       binary
+*.dll       binary
+*.exe       binary
+*.pdb       binary
