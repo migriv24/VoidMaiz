@@ -82,7 +82,11 @@ and compiled commands out.** A host view
 - returns command lines the host dispatches, then re-projects (the one-sync
   rule — `edit_canvas`, `draw_inspector`, and every protocol widget already
   have this exact signature shape);
-- filters with `node_matches` (the one filter bag: tags + name + `glyph:<g>`);
+- filters with `node_matches` (the one filter bag: tags + name + `glyph:<g>` —
+  and deliberately NOT `kind:<k>`, even though 0.2.14 gave every rune a kind:
+  `kind:` is an ordinary application namespace on the `what` axis, so reserving
+  it here would silently change what an app's own `kind:vegetable` matches. Kind
+  is queried with `ls --kind`; see [rune kinds](/concepts/rune-kinds.md));
 - keeps its viewport/camera analog as **config-tier view state** (`view.*`
   namespace, flushed on gesture end, undo-exempt — the Q3 charge that the
   camera abstraction stay substrate-shaped applies: a map's lat/lon/zoom fits

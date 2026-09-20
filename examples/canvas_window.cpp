@@ -8,6 +8,7 @@
 #include "voidmaiz/canvas.hpp"
 #include "voidmaiz/embed.hpp"
 #include "voidmaiz/gesture.hpp"
+#include "voidmaiz/glhost.hpp"
 #include "voidmaiz/face.hpp"
 #include "voidmaiz/inspector.hpp"
 #include "voidmaiz/project.hpp"
@@ -85,8 +86,7 @@ int main() {
         std::fprintf(stderr, "glfw error %d: %s\n", code, desc);
     });
     if (!glfwInit()) return 1;
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+    const char* glsl = maiz::gl_context_hints(); // per-platform; macOS needs 3.2 core
     GLFWwindow* window = glfwCreateWindow(1280, 760, "Void Maiz — canvas", nullptr, nullptr);
     if (!window) { glfwTerminate(); return 1; }
     glfwMakeContextCurrent(window);
@@ -95,7 +95,7 @@ int main() {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init("#version 130");
+    ImGui_ImplOpenGL3_Init(glsl);
     maiz::enable_docking(); // panels are movable/floating/re-dockable (Q11 ruling)
 
     // Light by default (the author's preference); toggle lives in the header.

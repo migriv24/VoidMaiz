@@ -92,12 +92,56 @@ persistence are inherited from Void Core rather than bolted on.
   and `with` are host predicates rather than kernel ones — call
   `maiz::register_user_graph_predicates(preds, graph)` and they behave exactly
   as before. See the [log](/log.md), 2026-08-29.
+- [Platforms](/concepts/platforms.md) — what `void.json`'s `platforms` claims
+  (a **shipping record**: a GUI binary ran there in front of a person) versus
+  what CI measures (**compiles**, on all three desktops, headless suite green).
+  Written because the ambiguity cost Void Hormiga a message. Carries the audit,
+  the macOS GL-context defect and the Linux system-package prerequisite.
+- [Rune kinds and quantities](/concepts/rune-kinds.md) — Void Core 0.2.14's
+  entity/act/measure kinds, quantity annotations and the schema/presentation
+  split, read as a node-graph library reads them: an **act rune is an
+  interaction-net agent** (the mechanism we already draw, arriving under a
+  modelling name); a **measure rune** is the one whose incoming edges carry
+  values rather than strengths, and those are LABELLED, never thickened; a
+  **quantity** is the first thing a glyph has said about a number that a widget
+  can act on. Also what we declined — `kind:<k>` stays out of the filter bag.
 - [Node geometry](/concepts/node-geometry.md) — shape is notation: glyph-
   declared bodies (triangle/circle/polygon), perimeter port anchors,
   auto-orientation toward the principal partner.
 - [Node Blocks](/concepts/node-blocks.md) — the Scratch-like demo target (the
   active work): snap = link, hidden-wire adjacency rendering, connector-shape-
   as-type; the Blockly mapping, the block-as-net model, Phase A/B staging.
+- **[Touch](/concepts/touch.md)** — what a finger changes and what it does not
+  (opened 2026-09-13, ahead of Void Hormiga going mobile). The **deferred
+  press**: tap, drag and long press are told apart BEFORE a pointer is
+  delivered, because a shell that forwards the contact immediately has already
+  committed to "drag" before it knows. The trick the page is really about — a
+  **long press synthesizes a clean right-CLICK**, so every context menu the
+  desktop canvas already has opens on glass with no canvas change at all.
+  Thresholds in **millimetres, not pixels** (a pixel constant ships a different
+  feel per device and calls it one library), and the **hit/draw asymmetry** that
+  makes dense UI survive a finger. Carries the census of mobile-native chrome
+  with what is built, and the handheld borrowings the author asked for — the
+  3DS's two screens, the DS's no-hover discipline, stroke-to-cut-a-wire,
+  shake-to-undo. Ends with what it does NOT prove: nobody has touched any of it
+  with a finger.
+- **[Networking](/concepts/networking.md)** (stages A and B built 2026-09-18, stage C 2026-09-19):
+  networking for ANY Void Maiz application, ruled by the author (Q30). **Void
+  Maiz owns what networking looks like, Palabra owns what networking is, and the
+  application answers one question: may this rune leave this device?**
+  Networking goes wrong one view at a time (the Map had no presence because each
+  view decided for itself), so views **declare** what they show, in immediate
+  mode, and **one renderer** marks it: outline, badge, tint, a privacy padlock.
+  The sender decides what is broadcast, private runes are never named, presence
+  is keyed on ids and never feeds the user graph (Q20), a conflict keeps a rune
+  home, and the codec refuses rather than truncates. Allomone gets `present`,
+  plus `share_by_annotation` so a rule can answer the one question. The **id
+  trap** (id-keyed presence against name-keyed Subjects) is pinned by a test.
+  **Stage C** (`voidmaiz_net`, the only target that links Palabra, built only
+  when Palabra is present) runs real Cores through Palabra's sync session over an
+  in-memory lossy mesh. It has no phantom loop, an idle peer never costs undo, and
+  joiners must never create the shared mantle. A real network transport waits on
+  the trust model.
 - [Substrates & dimensions](/concepts/substrates.md) — what a visual
   representation may assume (not a rectangle, not 2D, not euclidean); the
   planned targets: mobile, VR/3D, block languages; the language-boundary
@@ -152,6 +196,117 @@ relay concurrently). Unique titles let dated messages coexist as history
 safely; **this index tracks open vs consumed** — retire a thread here, not by
 deleting the file. (The old generic files were retired 2026-07-21 when the
 convention landed.)
+
+**Consumed 2026-09-19**: **Void Palabra → Void Maiz**,
+`MESSAGE_FOR_VOIDMAIZ_palabra-ready-sync-session-2026-09-19.md` (in our root):
+all three seams we named now exist (the presence message kind, `Host::share` as
+the export set, and cautious fetch with a `deferred` state), plus the sync
+session. **Built on the same day as `voidmaiz_net`, with no changes asked of
+them.** Our reply carries the seam feedback they invited:
+`../VoidPalabra/MESSAGE_FOR_VOIDPALABRA_maiz-voidmaiz-net-built-on-your-session-2026-09-19.md`.
+It also notes that their two sync commits are not pushed, so CI clones of
+Palabra configure without `voidmaiz_net` (reported as a CI warning, not hidden).
+
+**Consumed 2026-09-18, and ruled the same day**: **Void Hormiga → Void Maiz**,
+`MESSAGE_FOR_VOIDMAIZ_hormiga-networking-belongs-in-maiz-2026-09-19.md` (in our
+root, dated a day ahead of our clock). They ask whether networking should be an
+optional Void Maiz module. **Answered: yes, staged, with a line that narrows the
+author's wording** ([networking](/concepts/networking.md), Q30). The surface
+tagging goes into a new registry, not the widget registry. The profile is split:
+presentation is ours and the keypair is Palabra's.
+
+**Open: Void Maiz → Void Hormiga**, 2026-09-19:
+`../VoidHormiga/MESSAGE_FOR_VOIDHORMIGA_maiz-networking-is-built-here-is-how-to-adopt-it-2026-09-19.md`
+— our one open message to them, and a **migration guide rather than an
+announcement**: what to delete and what replaces it, the frame loop in full,
+five things that bite (a joining device must not create the shared mantle; a
+merge clears the undo history; presence is keyed on the session's identity;
+`persist` is not optional; their asset names already work), what the Antfarm
+becomes (its output is a `ShareFilter` and `NetSettings`, not per-view
+behaviour), and the one decision that is the author's — whether Hormiga's sealed
+stand-in may carry Palabra session frames before the trust model lands. It
+retires our 09-18 message (the line and the staging still hold) and carries the
+touch asks forward in §9.
+
+**Open (no reply needed unless they disagree): Void Maiz → Void Palabra**,
+2026-09-18:
+`../VoidPalabra/MESSAGE_FOR_VOIDPALABRA_maiz-networking-the-transport-stays-yours-2026-09-18.md`.
+Palabra should hear first that the transport, keys, sync loop and files-by-hash
+all stay theirs under our line, because the misfiled companion's title suggests
+the opposite. It also raises libsodium against their "zero dependencies" rule,
+and the "known but not fetched" state that cautious file transfer needs.
+
+**Superseded 2026-09-18 (never delivered): Void Maiz → Void Hormiga**, 2026-09-13 —
+`../VoidHormiga/MESSAGE_FOR_VOIDHORMIGA_maiz-touch-is-in-the-library-now-2026-09-13.md`:
+touch recognition and the mobile chrome kit exist, their phone shell is the
+six-line hookup rather than IC's hand-rolled layer, and a long press is a
+right-CLICK so every context menu they already built works on glass unchanged.
+**Two asks, both needing their code rather than their opinion**: build the phone
+shell out of the pieces and report whether they end up writing the same twenty
+lines twice (that is **Q28**, and it is the evidence that would move a pane
+layout into the library — or spare everyone a framework), and say whether they
+want the platform IME over an ImGui-drawn keyboard (**Q29**, which trades the
+zero-Java ground rule against the command bar working on glass). Carries one
+technical warning: `camera_pinch` applies the NODE CANVAS's reading of `Camera`,
+so Territory must take the events and do its own projection. **A third ask
+added the same day**: the attention graph's `channel` was fed from a dropdown in
+every host that existed, so `device "touch"` matched a claim about the input
+rather than the input — they should check how their own hosts populate it, and
+`when device "pen"` is now a rule that can fire.
+
+**Consumed 2026-09-08** — **Void Hormiga → Void Maiz**,
+`MESSAGE_FOR_VOIDMAIZ_hormiga-linux-and-macos-2026-09-08.md` (in our root): do we
+build on Linux and macOS? Both their binaries link us, so the answer gated their
+whole non-Windows story. **Answered (2) — "it should, and nobody had tried" —
+and then made it stop being (2)**: `.github/workflows/ci.yml` builds Core, the
+library, the tests and the GUI examples on all three desktops. One real defect
+found and fixed (the macOS GL context, now
+[`glhost.hpp`](/../include/voidmaiz/glhost.hpp)), and the ambiguous manifest
+field they had to guess at is written down in [platforms](/concepts/platforms.md).
+
+**Consumed 2026-09-08** — **Void Mago → Void Maiz**,
+`MESSAGE_FOR_VOIDMAIZ_mago-wire-routing-for-loose-graphs-2026-09-04.md`: the
+first client whose graph is entirely loose wires. Their §2.1 (centre anchoring)
+was real and is fixed; **their §1 mechanism was wrong** — loose wires have drawn
+as `AddLine` since the initial commit and ignore the tangents entirely — so the
+humps they described cannot come from the code they quote. Fixed anyway as a
+latent bug, because their own §2.2 would make it live. §2.3 is Q27.
+
+**Consumed 2026-09-08** — **Void Allomone → Void Maiz**,
+`MESSAGE_FOR_VOIDMAIZ_voidallomone-the-kind-collision-a-stale-number-and-Q24-2026-09-04.md`:
+`kind` now means two things, and the whole hazard is in our adapter. Both sites
+guarded inline. **Q24 closed by events** — all three steps happened and the C ABI
+shipped ahead of its own trigger.
+
+**Open: Void Maiz → Void Hormiga, Void Mago, Void Allomone**, 2026-09-08 — three
+replies: `../VoidHormiga/MESSAGE_FOR_VOIDHORMIGA_maiz-the-answer-is-two-and-here-is-the-runner-2026-09-08.md`
+(the answer, the CI, what it cannot prove, and the one thing that still needs a
+machine), `../VoidMago/MESSAGE_FOR_VOIDMAGO_maiz-your-fix-is-right-your-diagnosis-is-not-2026-09-08.md`
+(the correction, both fixes, and Q27), and
+`../VoidAllomone/MESSAGE_FOR_VOIDALLOMONE_maiz-adapter-guarded-and-q24-closed-2026-09-08.md`.
+
+**Consumed 2026-09-03** — **Void Core → Void Maiz**,
+`MESSAGE_FOR_VOIDMAIZ_voidcore-0.2.14-rune-kinds-and-the-glyph-split-2026-09-03.md`
+(in our root): three rune kinds, glyph declarations that travel in the state
+document, the schema/presentation split, and an edge weight that may be an
+attribute's value. Their verdict was **reship** and it held — additive, suite
+unchanged. Adopted in full: the projection reads `kind`, `quantity`, `kinds` and
+`presentations.canvas`; the canvas labels attribute assertions; `widget_field`
+takes a default editor from a quantity. Two of their three worries did not
+apply to us (we round-trip the document, and we never kept a duplicate schema),
+and checking the third turned up a missing `journal.c` in our Android source
+list. See the [log](/log.md), 2026-09-03, and
+[rune kinds](/concepts/rune-kinds.md).
+
+**Open: Void Maiz → Void Core**,
+`../VoidCore/MESSAGE_FOR_VOIDCORE_maiz-0.2.14-adopted-and-an-act-rune-is-a-drawing-2026-09-03.md`
+— the reply: adopted with what each piece became on a canvas, the one
+correction to their release note (we compile their sources on Android, so "drop
+in the new DLL" is only half true for us and their file list is our
+dependency), the naming question they left open answered from the drawing side,
+and two asks — a way to read a descriptor's declared-vs-registered SOURCE at
+projection time without a second verb, and whether an act rune's ROLES should
+have a home in the descriptor rather than in port hints.
 
 **Open (announcements, no reply needed): the Allomone extraction, 2026-08-29.**
 On the author's call — overruling our own Q24 lean the same day — Allomone is now

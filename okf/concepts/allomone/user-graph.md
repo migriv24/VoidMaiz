@@ -1,7 +1,7 @@
 ---
 type: Concept
 title: Allomone — the user action graph
-description: "The symmetric, timeless record of what a person touches together: affordances as nodes, frames as hyperedges, device as a first-class type, and the `with` operator that makes a rule responsive to the user rather than to the data. Why it is allowed to exist under the ephemera rule, and the Mylyn precedent we deliberately depart from."
+description: "The symmetric, timeless record of what a person touches together: affordances as nodes, frames as hyperedges, an OPEN channel string that is observed rather than declared (2026-09-13), and the `with` operator that makes a rule responsive to the user rather than to the data. Why it is allowed to exist under the ephemera rule, and the Mylyn precedent we deliberately depart from."
 resource: src/usergraph/usergraph.cpp
 tags: [status:current, audience:kernel, audience:host, confidence:asserted]
 timestamp: 2026-08-06T00:00:00Z
@@ -50,20 +50,67 @@ reintroduce the ordering the structure exists to refuse.
 direction" a property of the representation rather than a convention someone must
 remember; there is no field in which a direction could be written down.
 
-# Device is a first-class type
+# The channel is first-class — and, since 2026-09-13, OBSERVED
 
-    enum class Device { Pointer, Touch, Pen, Gamepad, Voice, XR };
+A tap is not a click and a gaze is neither. Recording how a touch actually
+arrived is what lets a mobile substrate be honest instead of pretending to be a
+mouse — the "new type for mobile" the author asked for.
 
-A tap is not a click and a gaze is neither. Recording the modality a touch
-actually arrived through is what lets a mobile substrate be honest instead of
-pretending to be a mouse — the "new type for mobile" the author asked for, and
-the reason it is an enum rather than a bool.
+**It was a closed enum until 2026-08-29** — `enum class Device { Pointer, Touch,
+Pen, Gamepad, Voice, XR }` — and it is now an open string, because a closed
+enumeration of six HID modalities *is* an interpretation: it decides in advance
+that attention arrives through a hand on a device, which is true of a GUI and of
+nothing else. An agent's attention arrives through the dispatcher, a harvest's
+through a pipeline stage. The six GUI spellings survive as `maiz::channel::`
+constants — a vocabulary, not a type.
 
 Per [substrates](/concepts/substrates.md)' quarantine: **the library records the
-modality and never interprets it.** What `touch` implies for sizing, spacing or
-affordance is entirely the host's business. `XR` is present so
-[Void Maiz XR](/horizons.md) inherits the vocabulary rather than inventing a
-parallel one.
+channel and never interprets it.** What `touch` implies for sizing or spacing is
+the host's business.
+
+## The wire that was missing
+
+Building the [touch](/concepts/touch.md) layer exposed a hole that no
+single-piece test could see, because each piece was individually correct:
+
+    UserGraph::touch(id, kind, channel)      ← takes a channel
+    device "pen"                             ← reads that channel
+    the host                                 ← got it from a DROPDOWN
+
+`examples/allomone_playground.cpp` offered the six spellings in a combo box and
+the person picked one. So `device "touch"` matched **a claim about the input,
+never the input** — and every host that shipped had the same hole, because there
+was nothing else to fill it with. The predicate worked perfectly against a
+self-report.
+
+A recognizer changes that, and the fix is small: `TouchPoint::tool`
+(finger / stylus / eraser / mouse — every touch platform reports it, and until
+now nothing asked) and `TouchFrame::channel`, the `maiz::channel::` spelling of
+whatever actually drew the contact. A host writes:
+
+    ugraph.touch(id, "widget", frame.channel);   // observed, not declared
+
+and `device "pen"` becomes a question about the world. `TouchFrame::channel` is
+**empty while nothing is being touched**, so a host writes a channel only when
+there was something to observe rather than defaulting to a modality nobody used
+— the same reasoning that made `touch()`'s own defaults empty rather than
+`"widget"`/`"pointer"`.
+
+An eraser reports the `pen` channel on purpose: it is a pen held the other way
+up, and a host needing the distinction puts it in the affordance's `kind`, which
+is where host vocabulary lives.
+
+**What this opens.** A stylus is not a finger, and on a device that has both,
+the difference is real intent — annotating versus navigating. `when device "pen"
+-> annotate 1` is now a rule that can fire, and it is the first responsive rule
+whose condition the person cannot accidentally lie about. The same seam is how
+`xr` arrives when [Void Maiz XR](/horizons.md) exists: a channel string from the
+substrate that knows, rather than a setting.
+
+**Pinned by `tests/touch_usergraph_smoke.cpp`**, which drives the whole chain —
+recognizer → observed channel → `UserGraph` → `register_user_graph_predicates` →
+the **sibling repository's** evaluator — and deliberately spells everything
+`maiz::`, so it fails if the re-export ever stops re-exporting.
 
 # Why it is allowed to exist
 

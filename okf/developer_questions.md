@@ -1,7 +1,7 @@
 ---
 type: Questions
 title: Developer questions
-description: Open decisions for the author, each with a lean. Open — Q25 (which mantle a compiled attention graph belongs in; the Device enum is already generalized to an open channel string), Q24 (how far to extract the merge: its own target is done; C ABI and sibling repo both lean 'not on this evidence'), Q23 (should JoinFn see the per-source grouping; lean yes, additively, when a client asks), Q22 (should identifiers accept non-ASCII; lean ASCII-only for now, widening is additive), Q21 (may the out-of-tree test harness have dependencies; lean stdlib-only Python), Q20 (whose attention the user action graph records — per-peer or shared across Palabra peers; has a privacy cost, decide before anything materializes one), Q16–Q19 (Void Hormiga's four Allomone boundary questions; the engine is built, the calls are the author's), Q12 (widget kit — ImGui-composed vs sanctioned Qt-class adapter), Q13 (surface-census trigger), Q14 (where a census bundle lands), Q15 (retarget moves to `place` now that Core 0.2.5 landed — takes moves out of undo). Q11 (workspace rung) decided 2026-07-20: enable ImGui docking.
+description: Open decisions for the author, each with a lean. Open — Q29 (how a soft keyboard reaches a Void Maiz application; lean: an ImGui-drawn keyboard first, because the platform IME costs the zero-Java claim), Q28 (does the library lay out panes per substrate; lean: no, keep climbing one rung per real need — ask Void Hormiga after they build a phone shell), Q27 (should wire routing be a CanvasStyle option; lean: Orthogonal yes but probably per-glyph, not per-canvas, and `Direct` is just correct behaviour rather than a mode), Q26 (where an act rune's role list lives; lean: a `roles` key on the descriptor, asked upstream rather than invented here), Q25 (which mantle a compiled attention graph belongs in; the Device enum is already generalized to an open channel string), Q23 (should JoinFn see the per-source grouping; lean yes, additively, when a client asks), Q22 (should identifiers accept non-ASCII; lean ASCII-only for now, widening is additive), Q21 (may the out-of-tree test harness have dependencies; lean stdlib-only Python), Q20 (whose attention the user action graph records — per-peer or shared across Palabra peers; has a privacy cost, decide before anything materializes one), Q16–Q19 (Void Hormiga's four Allomone boundary questions; the engine is built, the calls are the author's), Q12 (widget kit — ImGui-composed vs sanctioned Qt-class adapter), Q13 (surface-census trigger), Q14 (where a census bundle lands), Q15 (retarget moves to `place` now that Core 0.2.5 landed — takes moves out of undo). Q11 (workspace rung) decided 2026-07-20: enable ImGui docking.
 tags: [status:current, audience:dev, confidence:asserted]
 timestamp: 2026-08-09T00:00:00Z
 ---
@@ -10,6 +10,133 @@ Open decisions, with leans so a non-answer has a sensible default. Answer inline
 in chat, or via FaultSack notes; answers fold into concepts and clear from here.
 
 # Open
+
+- **Q29 — how does a soft keyboard reach a Void Maiz application?** Raised
+  2026-09-13 while building the touch layer. It is the APK's oldest known gap
+  (v1, 2026-07-14: *"no soft keyboard; Save As pre-fills a timestamp name; the
+  command bar is desktop-only until an IME shim lands"*), and on a phone it is
+  not a polish item — **the command bar is the CLI inside the UI, and without an
+  IME commitment 2's showpiece is desktop-only.** Every text field, every rune
+  name, every `set` of a string value is behind the same wall.
+
+  The reason it is a question and not a backlog entry is **ground rule 5 and the
+  zero-Java claim**. Showing Android's IME means `InputMethodManager`, which is
+  Java, reached through JNI. The APK's proudest structural fact is that it
+  shipped with *zero Java and zero Gradle* — a `hasCode=false` NativeActivity
+  manifest and a packaging script — and [substrates](/concepts/substrates.md)
+  records that as the proof the C++20 rule survives. Three answers:
+
+  (a) **JNI call-out from the shell.** ~40 lines of `ANativeActivity`-JNI to
+      toggle the IME and pump `AInputQueue` key events into ImGui. No Java
+      *source*, but it is logic calling into the platform's Java runtime, so the
+      claim becomes "no Java source" rather than "no Java" — a weaker sentence
+      that we would have to say honestly every time.
+
+  (b) **An on-screen keyboard drawn in ImGui.** Zero platform surface, works on
+      every substrate including a VR panel and a kiosk, and it is a *widget* —
+      which is the kind of thing this library already builds. Costs: no
+      autocorrect, no swipe, no language layouts, no accessibility integration,
+      and users hate a fake keyboard for anything longer than a name. But a
+      command bar is not prose: it is short, ASCII, and has a known vocabulary,
+      which is the one case where a custom keyboard can be *better* (a verb row
+      beats a QWERTY guess).
+
+  (c) **Both, chosen per field** — the platform IME for free text, the compact
+      command keyboard for the command bar.
+
+  **Lean: (b) first, then (c) if a host asks for prose entry.** It keeps the
+  platform surface at zero, it is testable, it serves substrates that have no
+  IME at all, and it makes the command bar *good* on glass rather than merely
+  possible. But this is exactly the kind of call the author makes — it trades a
+  ground rule against a headline feature, and (a) is what every other project
+  would do. See [touch](/concepts/touch.md).
+
+- **Q28 — does the library lay out panes per substrate, or does each host?**
+  Raised 2026-09-13; the honest continuation of **Q11**, whose ruling (enable
+  ImGui docking, 2026-07-20) solved the desktop half and does not reach a phone.
+  DockSpace assumes a surface wide enough to hold two panels side by side; a
+  430-px portrait screen holds one, and the arrangement is not a smaller version
+  of the desktop's but a different one — stacked, switched by a segmented
+  control, with the inspector as a bottom sheet and the log gone entirely.
+
+  The rung would be: a host declares its panels once (`{"canvas", "inspector",
+  "log", "table"}` with roles/priorities) and the library arranges them per
+  substrate — docked on desktop, stacked-and-switched on glass.
+
+  **Lean: no, not yet — keep climbing one rung per real need.** That was the
+  author's rule at Q11 and it has been right twice. What shipped instead is the
+  *pieces* a host arranges itself (bottom sheet, segmented control, FAB, swipe
+  row, touch profile), which is what docking's ruling did too: the library owns
+  the primitive, the host owns which panels exist. A layout engine is the first
+  thing on this list that would genuinely be a **framework**, and the
+  vendor-don't-depend instinct that favoured *more ImGui* at Q11 points the
+  other way here, because ImGui has no responsive layout to turn on.
+
+  **What would change the answer:** Void Hormiga building its phone shell and
+  finding that its four workflows plus Territory need the same twenty lines its
+  desktop shell needs — i.e. a second host, with the same shape, written twice.
+  That is exactly the evidence that moved touch recognition into the library
+  this session, and it would move this too. Ask them after they build it, not
+  before.
+
+- **Q27 — should wire routing be a `CanvasStyle` option?** Raised 2026-09-04 by
+  Void Mago, the first client whose graph is entirely loose wires. They proposed:
+
+  ```cpp
+  enum class WireRouting { Tangent, Direct, Orthogonal };
+  WireRouting routing = WireRouting::Tangent;   // default = today
+  ```
+
+  `Direct` being a run-derived tangent, `Orthogonal` the elbow style dependency
+  graphs conventionally use — leave downward, run horizontally, enter from
+  above — which for a DAG genuinely is more legible than any curve, because the
+  horizontal runs line up and the eye can follow a column.
+
+  **Their §1 and §2.1 are already built** (body-edge anchoring, derived
+  tangents); this is only the part that adds public API.
+
+  **Lean: yes for `Orthogonal`, no for the enum as proposed.** Two halves:
+
+  - `Direct` should not be an option, because it is now simply what a loose
+    wire does. An enum member for "the correct behaviour" is a migration flag,
+    and we have no client to migrate — Mago is the only one with loose wires
+    and they asked for the fix.
+  - `Orthogonal` is a real second answer to a real question and deserves to be
+    selectable. But **routing is a property of a graph's meaning, not of a
+    canvas's taste**: a build DAG wants elbows, an association graph wants
+    curves, and an application can hold both in one mantle. So the switch may
+    belong per-glyph (`presentations.canvas`, which Void Core 0.2.14 gave us a
+    home for) rather than on `CanvasStyle`, which is per-canvas and would force
+    one answer on every wire in the view.
+
+  Deciding needs a client with two graph shapes in one canvas. Until then the
+  cost of waiting is zero and the cost of guessing is a public enum we keep
+  forever. Backlogged T2, not built.
+
+- **Q26 — where does an ACT rune's role list live?** Raised 2026-09-03 while
+  adopting Void Core 0.2.14. An `act` rune reifies a verb so a ternary fact can
+  be expressed — *"Superman flies across the sky"* needs an agent, an act and a
+  path — and the participants attach to the act's ports. That is an
+  interaction-net agent, which this canvas already draws, so nothing is blocked
+  today: a host names the ports through `presentations.canvas.ports` and it
+  works.
+
+  The question is whether that is the right home, and the answer looks like no.
+  **A role is schema, not presentation.** "Agent", "patient" and "path" are true
+  of the act in every modality — a table row, an email, an XR scene and this
+  canvas all have the same three participants — while `presentations.canvas` is
+  by construction one modality's look. Putting roles there means every modality
+  re-declares them and the first two disagree.
+
+  **Lean: ask upstream rather than invent one.** A `roles` key beside `fields`
+  and `kinds` on the descriptor is the shape that matches what 0.2.14 just did
+  everywhere else (schema in the descriptor, look in `presentations`), and this
+  is exactly the kind of thing rule 4 says we message rather than build — a
+  role vocabulary invented in a UI library would be a domain model wearing a
+  renderer's clothes. Asked in
+  `../VoidCore/MESSAGE_FOR_VOIDCORE_maiz-0.2.14-adopted-and-an-act-rune-is-a-drawing-2026-09-03.md`.
+  Until answered, port hints stay the interim home and the backlog item stays
+  T2-blocked.
 
 - **Q25 — which mantle does a compiled attention graph belong in?** Raised
   2026-08-29 by the author, generalizing the user graph: *"we don't know what
@@ -40,45 +167,6 @@ in chat, or via FaultSack notes; answers fold into concepts and clear from here.
   before anyone measured whether it matters. Not built — the host still passes a
   name — and it interacts with Q20 (whose attention the graph records), so the
   two should be answered together.
-
-- **Q24 — how far do we extract the merge?** Raised 2026-08-28 by Void Unity,
-  who read [host-protocol](/../../VoidAllomone/okf/concepts/host-protocol.md), decided **not**
-  to adopt, and wrote up why — which is more useful than a yes. They proposed
-  three steps in ascending order of ambition, and were explicit that only the
-  second would make them a consumer.
-
-  **(a) Its own target — DONE 2026-08-29**, because it was free: `merge()`
-  depends on nothing, and the layer picture had been claiming this for weeks
-  while the build contradicted it. Not a question any more.
-
-  **(b) Give it a C ABI** — `libvoidmaizmerge`, opaque handle, JSON in, JSON
-  out, one `vc_free_str`-shaped ownership rule. This is the one that turns
-  "another C++ app could use it" into "any host could", and it is why Void Unity
-  exists at all: they bind `libvoidcore` and refuse to reimplement it. **Lean:
-  yes, eventually, but not on this evidence.** The surface is genuinely small
-  (build a map, merge, read cells, explain one), far smaller than Core's. But it
-  is a second ABI to keep stable forever, and today it has **zero** consumers —
-  Void Unity said plainly *"we are not waiting for it"* and is shipping its own
-  C# implementation now. Building an ABI for a host that has already built the
-  thing is the wrong order. The trigger to revisit: a **second** project asking,
-  or Void Unity finding their parallel algebra has drifted from ours in a way
-  that costs them.
-
-  **(c) Extract it to a sibling repository**, the way Void Palabra is. **Lean:
-  no, and not yet for a reason that could change.** The author's own worry is
-  the right one — *"it's ALREADY abstract as heck"* — but the sharper objection
-  is that Palabra **earned** its repo by having consumers who needed it
-  independently, and an extracted merge would have none. A repo is not a
-  stronger version of a target; it is a build, a test suite, a release cadence
-  and an OKF, carried for a boundary that `voidmaiz_merge` already draws inside
-  one tree at a fraction of the cost. Do (c) when (b) has a consumer, not
-  before — the order matters, because (c) without (b) helps nobody: Void Unity
-  cannot link a C++ repo either.
-
-  Their fourth point, **stratified derivation** (chains: `health ← f(stamina)`
-  ← `f(age)`), is not a question but a roadmap item, and their read is correct
-  that we already own the analyzer — `sentinel.hpp` runs Tarjan SCC and Kahn
-  strata and reports `1 strata` today because nothing produces more.
 
 - **Q23 — should `JoinFn` see the per-source grouping?** Raised 2026-08-29 while
   adding `Lattice::Tally`. A `Custom` join receives the **cross-source
@@ -158,6 +246,17 @@ in chat, or via FaultSack notes; answers fold into concepts and clear from here.
   without changing the structure — whereas **un-sharing something already synced
   is not possible.** Decide before any host materializes a user graph into a
   synced mantle; nothing today does.
+
+  **Made urgent 2026-09-18 by presence** ([networking](/concepts/networking.md)).
+  Void Hormiga shipped live presence, which shares what someone has selected and
+  which section they are in, every second. That is the *ephemeral* half of this
+  question, and it is live between two real machines. The lean still holds for
+  the *materialized* graph, because presence never enters history, so nothing
+  needs un-sharing. Presence does add one point: **the sender needs its own
+  switch**. The author's worry about showing which tabs people are in was
+  clutter, which is a receiver-side filter. A filter on someone else's screen is
+  not privacy, so "do not broadcast which surfaces I have open" has to be a
+  separate setting on the sending device.
 
 - **Q16–Q19 — Void Hormiga's four Allomone questions** (their 2026-08-06
   message). The engine is BUILT ([Allomone](/../../VoidAllomone/okf/index.md)); these are
@@ -342,6 +441,49 @@ in chat, or via FaultSack notes; answers fold into concepts and clear from here.
   bumping our floor from 0.2.4 to 0.2.5 (0.2.6 adds `mantle rm`/`rename`).
 
 # Decided
+
+## By the author, 2026-09-18 (networking)
+
+- **Q30: does Void Maiz own networking, or the half of it an application
+  shows? The half it shows, in full, and generalized.** The lean was accepted,
+  with the author's own sharper framing: build *"any GUI application's
+  networking component,"* not Hormiga's, *"meaning you might have to make
+  significant alterations to how hormiga does it,"* and Void Maiz owns *"the
+  visuals and the tags for networking, the highlights, and … how networking
+  kinda fits with the registry, allomone, etc."* Stages A and B were built the
+  same day ([networking](/concepts/networking.md)). Stage C (transport) belongs
+  to Void Palabra and waits on it; nothing on the Void Maiz side does.
+
+## Closed by events, 2026-09-04 (reported by Void Allomone)
+
+- **Q24 — how far do we extract the merge? — ALL THREE STEPS HAPPENED.** Not
+  answered; overtaken. Void Allomone pointed out that the question had outlived
+  itself and that closing it was ours to do.
+
+  - **(a) its own target** — done 2026-08-29, as the lean said.
+  - **(c) a sibling repository** — done 2026-08-29, on the author's call, which
+    **overruled our lean the same day we wrote it**. The lean was "no, and not
+    yet"; the author said extract. Recorded plainly because a question doc that
+    quietly drops its overruled leans is a worse record than one that keeps
+    them.
+  - **(b) the C ABI** — shipped, and this is the interesting one:
+    `src/allomone_c.cpp` with `capi_smoke` in ctest, **still with zero
+    consumers**. Our lean was *"yes eventually, but not on this evidence"*, with
+    the stated trigger being a second project asking. No second project asked.
+    It shipped because the extraction made it nearly free, not because the
+    trigger fired.
+
+  **What was right, and worth keeping:** the ORDER. The lean argued (c) without
+  (b) helps nobody, and in the event both landed together, so the objection
+  never got tested rather than being proven wrong. **What was wrong:** treating
+  "zero consumers" as decisive about *whether* to build, when it was only ever
+  decisive about *when*. Cost, not demand, is what actually moved this — the
+  extraction changed the price of (b) from "a second ABI to keep stable forever"
+  to "a file", and a lean that only weighs demand cannot see a price change.
+
+  Their fourth point, **stratified derivation**, was never a question but a
+  roadmap item, and remains one: `sentinel.hpp` runs Tarjan SCC and Kahn strata
+  and reports `1 strata` because nothing produces more.
 
 ## By the author, 2026-07-13 (open-questions batch cleared)
 

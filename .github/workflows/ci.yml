@@ -1,0 +1,120 @@
+# CI for Void Maiz — and specifically: does the view compile off Windows?
+#
+# WHY THIS EXISTS. Void Hormiga asked on 2026-09-08 whether Void Maiz builds on
+# Linux and macOS, because both of their binaries link us and there is no
+# configuration of Void Hormiga that reaches a non-Windows desktop without Void
+# Maiz on it. We could not answer from evidence: `void.json` recorded
+# `["windows-x64", "android-arm64"]`, which was a record of what had been BUILT,
+# and nobody had ever tried the other two. Neither project owns a Linux or macOS
+# machine, and that second-computer constraint has been sitting in front of
+# their phase F exit test since 2026-08-27.
+#
+# A runner is the second computer. This workflow is the answer to their question
+# in a form that keeps answering it after today, which a message cannot do.
+#
+# WHAT IT PROVES AND WHAT IT DOES NOT. It proves the library, the tests and the
+# GUI examples COMPILE and that the headless suite RUNS, on all three. It does
+# not prove a window opens: no runner has a display, and "it ran there" for a
+# GUI means a human saw it. The macOS GL context in `voidmaiz/glhost.hpp` is
+# therefore reasoned-and-compiled, not witnessed — see okf/log.md, 2026-09-08.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      # Never fail-fast: the whole point is to see all three verdicts, and a
+      # red Windows leg must not hide a green Linux one.
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+          - os: macos-latest
+          - os: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      # The three repos are SIBLINGS on disk — our CMake defaults are
+      # `../VoidCore/core` and `../VoidAllomone`, so the checkout has to
+      # reproduce that layout rather than the usual single-repo one.
+      - uses: actions/checkout@v4
+        with:
+          path: VoidMaiz
+
+      # Note the folder names: the GitHub repo is `void-core`, the sibling
+      # directory the family uses is `VoidCore`.
+      - name: Check out the siblings
+        shell: bash
+        run: |
+          git clone --depth 1 https://github.com/migriv24/void-core.git VoidCore
+          git clone --depth 1 https://github.com/migriv24/VoidAllomone.git VoidAllomone
+          # OPTIONAL: Void Palabra enables `voidmaiz_net` (networking, stage C).
+          # Without it the rest of the library builds and tests exactly as
+          # before — that is the claim, and the step below reports which
+          # configuration this run actually exercised.
+          git clone --depth 1 https://github.com/migriv24/VoidPalabra.git VoidPalabra || true
+
+      # GLFW 3.4 builds BOTH an X11 and a Wayland backend on Linux by default
+      # (vendor/glfw/CMakeLists.txt gates them on UNIX;NOT APPLE), so configure
+      # needs both sets of development headers even though a runner will never
+      # open a window. This is the step a first-time Linux builder is most
+      # likely to be missing, and it is a system-package prerequisite rather
+      # than anything wrong with the source.
+      - name: Linux window-system headers (GLFW build dependency)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xorg-dev libwayland-dev libxkbcommon-dev wayland-protocols
+
+      # Void Maiz links the core as a prebuilt shared library on desktop, so it
+      # has to exist before we configure. Same command Void Core's own CI uses.
+      - name: Build Void Core
+        shell: bash
+        run: cmake -S VoidCore/core -B VoidCore/core/build -DCMAKE_BUILD_TYPE=Release && cmake --build VoidCore/core/build --config Release
+
+      - name: Configure Void Maiz
+        shell: bash
+        run: cmake -S VoidMaiz -B VoidMaiz/build -DCMAKE_BUILD_TYPE=Release
+
+      # Builds everything, GUI examples included: `maiz_canvas` and
+      # `maiz_allomone` link the view module, GLFW and ImGui, so a compile
+      # failure in the window layer fails here even though nothing is displayed.
+      - name: Build
+        shell: bash
+        run: cmake --build VoidMaiz/build --config Release
+
+      # Say out loud whether networking was in this run. A clone of a Palabra
+      # that predates its sync session (sync.hpp) configures WITHOUT
+      # voidmaiz_net, by design — and a silent skip would read as a pass.
+      - name: Report the networking configuration
+        shell: bash
+        run: |
+          if ls VoidMaiz/build/*voidmaiz_net* VoidMaiz/build/*/*voidmaiz_net* >/dev/null 2>&1; then
+            echo "::notice::voidmaiz_net built — net_smoke runs in this job"
+          else
+            echo "::warning::voidmaiz_net NOT built (Void Palabra absent or without sync.hpp) — networking untested in this job"
+          fi
+
+      # The suite is entirely headless — no test target links voidmaiz_view.
+      #
+      # `reduce_conformance` is EXCLUDED, and not to buy a green badge: it is
+      # knowingly at 17/25 because Void Core extended the portable reduce
+      # contract on 2026-09-01 with boxes, a reserved separator and a `patch`
+      # rule that this port does not implement yet. It is on our backlog, it is
+      # not a regression, and it is not a portability signal — so it must not
+      # mask one. It runs on its own below, where its number is visible and
+      # cannot be mistaken for a platform verdict.
+      - name: Test (headless suite)
+        shell: bash
+        working-directory: VoidMaiz/build
+        run: ctest --output-on-failure -C Release -E reduce_conformance
+
+      - name: Reduce conformance (known 17/25 — reported, not gating)
+        shell: bash
+        working-directory: VoidMaiz/build
+        continue-on-error: true
+        run: ctest --output-on-failure -C Release -R reduce_conformance

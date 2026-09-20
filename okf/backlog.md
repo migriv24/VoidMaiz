@@ -52,6 +52,84 @@ Done items move to ~~struck~~ with the log entry date.
 
 # T2 — wanted
 
+## Networking (opened 2026-09-18, Q30; [networking](/concepts/networking.md))
+
+- ~~**Stage A**: surfaces (immediate mode), presence and roster, bounded codec,
+  one renderer, `CanvasNet`, and the Allomone `present` / `share_by_annotation`~~
+  (2026-09-18)
+- ~~**Stage B**: profile presentation, member list, the Networking settings with
+  sender and receiver groups~~ (2026-09-18)
+- ~~**Stage C**: `voidmaiz_net`, real Cores syncing through Palabra's session:
+  the replica loop, the splice, presence over the ephemeral channel, and the
+  ShareFilter as the ExportSet~~ (2026-09-19)
+- **A real transport**: gated on the trust model (Palabra's open-questions §6.1).
+  Whether Hormiga's sealed stand-in may carry session frames meanwhile is the
+  author's explicit call.
+- ~~**Conflict and anomaly UI.** Plain rows projected by `voidmaiz_net`
+  (`conflicts()`, `anomalies()`, `resolve()`), drawn by `draw_conflicts` /
+  `draw_anomalies` in the view module, which links no sync library~~ (2026-09-19)
+- **Conflict provenance in the UI.** A row says what disagreed, not WHO or WHEN.
+  Palabra's utterance history could name both; the panel has nowhere to show it
+  yet.
+- **A join flow that does not seed the document.** Joiners must receive mantles,
+  not create them (see the concept). Worth a helper once a second application
+  joins.
+- **Avatar textures.** `Profile::avatar` is an asset reference with no texture
+  path, so every avatar is an initials disc.
+- **Presence on glass**: a declaration on a bottom sheet, and badges at touch
+  size. Not yet drawn.
+- **The surface census reads `Surfaces`.** The census has waited for a harvest
+  source since July, and now has one.
+- **The cautious-files placeholder**: the setting exists; the placeholder a view
+  draws for a known-but-unfetched file does not.
+
+## Mobile & touch (opened 2026-09-13, ahead of Void Hormiga going mobile)
+
+Built this session — recorded so the tier list shows what the kit already has:
+
+- ~~**Touch recognizer** (`voidmaiz/touch.hpp`): the deferred press (tap vs
+  drag vs long press decided BEFORE the pointer is delivered), two-finger
+  pan/pinch/rotate, fling, opt-in edge swipe, a millimetre-based `TouchProfile`,
+  and the pointer policy the IC shell hand-rolled~~ (2026-09-13)
+- ~~**Mobile chrome kit** (`voidmaiz/mobile.hpp`): bottom sheet with detents,
+  snackbar with an UNDO action, FAB + speed dial, segmented control, stepper
+  with hold-to-repeat, swipe-actionable list row, `apply_touch_canvas`~~
+  (2026-09-13)
+- ~~**Reference touch host** (`examples/mobile_window.cpp`): a phone-shaped
+  desktop binary where the mouse is a finger and Alt adds a mirrored second
+  one — so the kit is looked at, not reasoned about. **Built, not yet run**~~
+  (2026-09-13)
+
+Next, roughly in order of pull:
+
+- **Run the reference host and fix what a hand finds.** The honest gap: 81
+  assertions cannot tell you a gesture feels wrong. First job of the next
+  session.
+- **Stroke gestures** — draw a stroke across wires to CUT them, a circle to
+  lasso-select, a stroke node→node to link. The handheld borrowing (*Phantom
+  Hourglass*, *Kirby Canvas Curse*) and the same feature as the existing T2
+  "wire cut gesture (Ctrl-drag)" arriving from the touch side. **The one most
+  worth building next**; compiles to `unlink`/`link`, no new command shapes.
+- **Fling consumption** — the recognizer reports velocity; the canvas does not
+  coast. Inertia is an animation, so it belongs in `CanvasFx`, not in the
+  camera.
+- **`widget_field_stepper`** — the registry-side field editor (ONE
+  `set`/`setjson` per tap), so a glyph's `hints.editors` can name `"stepper"`
+  and every surface picks it up. The raw control shipped; the registry citizen
+  did not.
+- **Action sheet / wheel picker / pull-to-refresh** — a bottom sheet at a fixed
+  detent, a drum for enums and dates, and "re-read the state document" as a
+  real gesture rather than a hack.
+- **Safe-area insets** — notches and gesture bars; ImGui's work area covers
+  part of it, not all.
+- **Haptic feedback sink** — designed for XR (gesture events → a host channel,
+  symmetric with the log sink) and pulled forward by mobile, where a verdict
+  buzz is the cheapest possible confirmation.
+- **Soft keyboard / IME** — **Q29**, a ground-rule question before it is a
+  feature: the platform IME costs the zero-Java claim.
+- **Responsive pane layout** — **Q28**, leaning NO. The pieces shipped; the
+  engine waits for a second host writing the same twenty lines.
+
 - ~~**`field_of(SceneNode, key)` in the library.** Reading one field out of a
   projected node means walking `fields` and un-escaping `value_json`, and there
   were **three private copies** of that (the Allomone demo, `command_smoke`,
@@ -317,6 +395,79 @@ marked **[vls]**:*
   `vls::face_knob` (calls qualified same-day to resolve the ADL ambiguity)
   until its agent adopts the kit's.*
 
+## Cross-platform and wire routing (added 2026-09-08)
+
+- **T2 — `Orthogonal` wire routing** (Void Mago's §2.3, filed as Q27). Elbow
+  wires — leave downward, run horizontally, enter from above — which a build DAG
+  reads better than any curve. Blocked on the placement question, not the code:
+  routing is a property of a graph's MEANING, so it may belong per-glyph in
+  `presentations.canvas` rather than per-canvas on `CanvasStyle`. Needs a client
+  with two graph shapes in one canvas.
+- **T2 — a consistent perpendicular bow for loose wires** (Mago §2.2). Two
+  nodes with several relationships currently draw as overlapping straight runs;
+  a signed offset per wire would fan them. Mago has no such pair today, but a
+  family graph with `requires` AND a seam between one pair is exactly the case
+  they already report as "described twice". Note the ordering: this is the first
+  thing that would make a loose wire a CURVE, and the tangents it needs were
+  dead-and-wrong until 2026-09-08.
+- **T3 — witness a GUI binary on Linux and on macOS.** CI proves the three
+  desktops compile and that the headless suite passes; no runner has a display,
+  so `void.json`'s `platforms` array stays two long until a person watches the
+  canvas draw on a third. This is the only thing standing between Void Hormiga
+  and a non-Windows release, and it needs a machine rather than a commit — the
+  same second-computer constraint as their phase F exit test.
+
+## What Void Core 0.2.14 opened (added 2026-09-03)
+
+Adoption itself is done (see [rune kinds](/concepts/rune-kinds.md)); these are
+the things that only became *possible* because kinds, quantities and travelling
+declarations exist. Ordered by how much each one is already half-built here.
+
+- **T2 — the act-rune role affordance.** An `act` rune is a verb reified as a
+  node with typed ports for its ROLES, which is an interaction-net agent — the
+  thing this canvas already draws. What is missing is that a role is not a
+  dataflow port: "agent", "patient", "path" want naming, ordering and a
+  drop-verdict of their own, and today they arrive as generic aux ports through
+  `presentations.canvas.ports`. That is the wrong home, because a role is
+  **schema** (true in every modality) and port hints are presentation. Blocked
+  on an upstream answer, asked 2026-09-03 — see Q26.
+- **T2 — dimensional checking at wire-drag time.** The canvas already computes
+  a verdict tint while a wire is in flight (`wire_ok`/`wire_bad`/`wire_neutral`)
+  from port TYPES. A wire landing on a measure rune can now be checked against
+  something stronger: the measure's `level` (dropping a value onto an `ordinal`
+  dimension is a category error) and its `min`/`max`. Costs nothing new — the
+  machinery, the projection and the annotation are all present.
+- **T2 — direct manipulation of an assertion.** If a weight is a value, then
+  dragging the label on an assertion wire should compile
+  `link <of> <measure> --weight <n>` — one command, staged like every other
+  gesture, undoable like every other edit. This is the first gesture in the
+  library whose subject is an EDGE rather than a node, which is why it is worth
+  writing down before it is written.
+- **T2 — a measure view (the second first-party projection).** `values
+  --measure speed` answers "everything with a speed" *structurally*, which no
+  field scan ever did. [Views are projections](/concepts/views-as-projections.md)
+  and the table view was always going to be the proof; a measure lane — one
+  dimension, every rune asserting it, sorted, in units — is a better one,
+  because it is a view that could not have been built before 0.2.14.
+- **T2 — unit suffixes on field editors.** `SceneField::quantity.unit` is
+  projected and unused. Every numeric editor in the kit should show it.
+- **T3 — declared glyphs make a bundle self-describing, which unblocks two
+  things at once.** [Surface census](/concepts/surface-census.md) harvests a GUI
+  into concept runes, and a census bundle previously carried its runes but not
+  their meaning — open it anywhere but the harvesting host and the fields were
+  present and unreachable. `glyph declare` fixes that with no census change.
+  Bigger: an **authoring tool** (Allmusely, [horizons](/horizons.md)) needs a
+  user to be able to invent a node TYPE at runtime, and until today a new type
+  meant host code. A declaration is an ordinary command — logged, journaled,
+  mergeable and **undoable** — which is precisely the property that authoring
+  tool's whole premise rests on.
+- **T3 — `presentations` is the multi-substrate seam we said we would need.**
+  [Substrates](/concepts/substrates.md) promised Void Maiz XR and NE would
+  render the same mantle without the model knowing which. A per-modality
+  presentation map is exactly that home: `canvas` is ours, `xr` and `ne` are
+  reserved by the same convention, and none of them is the schema. Nothing to
+  build now; a great deal not to build wrongly later.
+
 # T3 — someday / client-driven
 
 *(see [substrates & dimensions](/concepts/substrates.md) for the axes and
@@ -345,8 +496,12 @@ per-target analysis)*
   - *Sub-questions*: `check_wire` single-type vs Blockly array-intersection
     stays open (Void Hormiga will report if a polymorphic socket appears);
     the rest resolved 2026-07-15 (see concept).
-- **2D node playground APK** (Android/NDK): touch gesture set (pinch zoom,
-  long-press menus), the substrate-modularity forcing function.
+- ~~**Touch gesture set** (pinch zoom, long-press menus) — the item that sat
+  under "2D node playground APK" since the start. Landed 2026-09-13 as a
+  LIBRARY layer rather than a demo's: `maiz::TouchRecognizer` (UI-free,
+  81 assertions, no window) + `camera_pan`/`camera_pinch`. Long-press
+  synthesizes a clean right-CLICK, so every existing context menu works on
+  glass with no canvas change~~ (2026-09-13, [touch](/concepts/touch.md)).
 - **InteractionCombinators VR** (Quest 3, OpenXR): → **Void Maiz XR's
   charter** (separate library per Q#12; consumes voidmaiz+voidmaiz_reduce,
   replaces voidmaiz_view) — solids (cone = 3D triangle, sphere = ε), surface

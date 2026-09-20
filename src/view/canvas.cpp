@@ -7,8 +7,10 @@
  * rejects it, the next re-projection simply snaps the picture back — there is
  * no local truth to reconcile. */
 #include "voidmaiz/canvas.hpp"
+#include "voidmaiz/netview.hpp"
 #include "voidmaiz/face.hpp"
 #include "voidmaiz/gesture.hpp"
+#include "voidmaiz/project.hpp" // value_label: an attribute assertion draws as its value
 
 #include <algorithm>
 #include <cctype>
@@ -263,9 +265,43 @@ float node_theta(const Scene& scene, const SceneNode& n, const CanvasStyle& s,
 /* Perimeter anchor of a shaped node's port: the principal at the apex,
  * auxiliaries along the opposite feature (a triangle's base edge; the
  * opposite arc otherwise), in index order. */
+/* The drawn radius of a notation body (circle/polygon). One definition,
+ * because the anchor math, the body drawing and the wire clip must agree —
+ * they were three copies of 0.44f before a wire needed to land on the edge. */
+float shaped_radius(const NodeGeom& g) {
+    return std::min(g.size.x, g.size.y) * 0.44f;
+}
+
+/* Where a wire drawn toward `dir` (a unit vector out of the body's centre)
+ * meets that body's boundary. Used for LOOSE wires, which have no port to ask.
+ *
+ * Reported by Void Mago 2026-09-04, whose graph is entirely loose wires: a
+ * centre-to-centre line starts underneath the node it belongs to and emerges
+ * from the far side, so it reads as passing THROUGH the node rather than out
+ * of it, and it crosses unrelated bodies on the way. Clipping to the boundary
+ * is most of the readability win and needs no routing at all. */
+ImVec2 body_edge(const SceneNode& n, const NodeGeom& g, const ImVec2& dir) {
+    ImVec2 c(g.pos.x + g.size.x * 0.5f, g.pos.y + g.size.y * 0.5f);
+    if (n.shape == NodeShape::Circle || n.shape == NodeShape::Polygon) {
+        /* A polygon takes its circumradius, so a wire meeting a flat side
+         * stops a hair outside it. A small gap reads as a wire touching the
+         * body; the alternative (exact edge intersection per side count) is
+         * more math than the difference is worth at these sizes. */
+        float r = shaped_radius(g);
+        return ImVec2(c.x + dir.x * r, c.y + dir.y * r);
+    }
+    /* Window and Block: the ray from the centre, clipped to the half-extents. */
+    const float eps = 1e-4f;
+    float hx = g.size.x * 0.5f, hy = g.size.y * 0.5f;
+    float tx = hx / std::max(std::fabs(dir.x), eps);
+    float ty = hy / std::max(std::fabs(dir.y), eps);
+    float t = std::min(tx, ty);
+    return ImVec2(c.x + dir.x * t, c.y + dir.y * t);
+}
+
 ImVec2 shaped_anchor(const SceneNode& n, const NodeGeom& g, int index, float theta) {
     ImVec2 c(g.pos.x + g.size.x * 0.5f, g.pos.y + g.size.y * 0.5f);
-    float r = std::min(g.size.x, g.size.y) * 0.44f;
+    float r = shaped_radius(g);
     auto at = [&](float ang, float rad) {
         return ImVec2(c.x + rad * std::cos(ang), c.y + rad * std::sin(ang));
     };
@@ -628,8 +664,31 @@ bool wire_endpoints(const Scene& scene, const SceneWire& w, const Camera& cam,
     NodeGeom tg = geom(*tn, cam, origin, style, ed, fx);
     ta = tb = ImVec2(0, -1);
     if (w.kind == SceneWire::Kind::Loose) {
-        a = ImVec2(fg.pos.x + fg.size.x * 0.5f, fg.pos.y + fg.size.y * 0.5f);
-        b = ImVec2(tg.pos.x + tg.size.x * 0.5f, tg.pos.y + tg.size.y * 0.5f);
+        /* Centres first, then out to each body's boundary along the run.
+         *
+         * THE TANGENTS ARE DERIVED HERE RATHER THAN LEFT AT (0,-1), and that
+         * half is a latent fix rather than a visible one: every loose path
+         * draws a straight line (draw_wire's Loose case, the hover highlight,
+         * and hit_wire's linear walk all ignore ta/tb), so the upward default
+         * was dead for this kind. Void Mago read it as the cause of humped
+         * wires on 2026-09-04; it cannot be, but a dead value that is wrong
+         * becomes a live bug the first time anyone curves a loose wire — which
+         * is exactly what their own §2.2 asks for. Correct now, cheaply.
+         *
+         * The VISIBLE fix is the anchoring below. */
+        ImVec2 fc(fg.pos.x + fg.size.x * 0.5f, fg.pos.y + fg.size.y * 0.5f);
+        ImVec2 tc(tg.pos.x + tg.size.x * 0.5f, tg.pos.y + tg.size.y * 0.5f);
+        ImVec2 d(tc.x - fc.x, tc.y - fc.y);
+        float len = std::sqrt(d.x * d.x + d.y * d.y);
+        if (len > 0.001f) {
+            ta = ImVec2(d.x / len, d.y / len);
+            tb = ImVec2(-ta.x, -ta.y);
+            a = body_edge(*fn, fg, ta);
+            b = body_edge(*tn, tg, tb);
+        } else { // stacked nodes: no direction to derive, so keep the centres
+            a = fc;
+            b = tc;
+        }
     } else {
         a = port_anchor(*fn, fg, w.from_port, /*prefer_out=*/true, style,
                         node_theta(scene, *fn, style, ed, fx));
@@ -664,6 +723,27 @@ void render_scene(ImDrawList* dl, const Scene& scene, const Camera& cam,
                 ps && ps->color)
                 ling = ps->color;
         draw_wire(dl, w, a, ta, b, tb, cam.zoom, style.theme, ling);
+
+        /* AN ATTRIBUTE ASSERTION IS LABELLED, NOT THICKENED (SPEC §3.7.1).
+         * When `to` is a measure rune the weight is the attribute's VALUE, and
+         * a value is not comparable to the strengths on the rest of the canvas
+         * — drawing "900 rpm" nine hundred times heavier than "supports, 1.0"
+         * would be a lie the renderer told on the model's behalf. So the number
+         * is written out, with its unit, at the midpoint of the wire it belongs
+         * to. Nothing is drawn for an ordinary weight: a strength has no
+         * canonical rendering yet, and inventing one here would decide a
+         * question the canvas has not been asked. */
+        if (w.is_value && cam.zoom > 0.45f) {
+            std::string vl = value_label(scene, w);
+            if (!vl.empty()) {
+                float small = ImGui::GetFontSize() * 0.85f * cam.zoom;
+                ImVec2 ts = ImGui::CalcTextSize(vl.c_str());
+                ts.x *= small / ImGui::GetFontSize();
+                ImVec2 mid(0.5f * (a.x + b.x), 0.5f * (a.y + b.y));
+                text_with_halo(dl, small, ImVec2(mid.x - ts.x * 0.5f, mid.y - small * 0.5f),
+                               style.theme.text_dim, vl.c_str());
+            }
+        }
     }
     // ghosts: nodes the model no longer holds, drawn mid-animation (a rewrite's
     // smush). Above wires, below live nodes; explicit rot (no scene partner).
@@ -864,7 +944,7 @@ void draw_canvas(const char* str_id, const Scene& scene, const Camera& cam,
 CanvasIO edit_canvas(const char* str_id, const Scene& scene, EditorState& ed,
                      const CanvasStyle& style, const AddPalette* palette,
                      const FaceRegistry* faces, const ContextMenuFn& context_menu,
-                     const CanvasFx* fx) {
+                     const CanvasFx* fx, const CanvasNet* net) {
     CanvasIO out;
     ed.hover_wire_valid = false; // re-derived by this frame's hover pass
     ImVec2 avail = ImGui::GetContentRegionAvail();
@@ -1386,6 +1466,33 @@ CanvasIO edit_canvas(const char* str_id, const Scene& scene, EditorState& ed,
     ImDrawList* dl = ImGui::GetWindowDrawList();
     dl->PushClipRect(origin, ImVec2(origin.x + avail.x, origin.y + avail.y), true);
     render_scene(dl, scene, cam, origin, avail, style, &ed, fx);
+
+    // ── networking: declare what is shown, mark who is on it ────────────────
+    if (net && net->surfaces) {
+        Surfaces& sf = *net->surfaces;
+        sf.declare(net->surface_id, "canvas", net->mark);
+        if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows))
+            sf.focus(net->surface_id);
+        float mark_scale = std::max(cam.zoom, 0.6f);
+        for (const auto& n : scene.nodes) {
+            if (const NodeFx* f = node_fx(fx, n); f && f->scale <= 0.02f) continue;
+            NodeGeom g = geom(n, cam, origin, style, &ed, fx);
+            ImVec2 mn = g.pos, mx(g.pos.x + g.size.x, g.pos.y + g.size.y);
+            // an off-screen node is not SHOWN: a surface declares what a person
+            // can actually see, or "who is looking at this" means nothing
+            if (mx.x < origin.x || mx.y < origin.y || mn.x > origin.x + avail.x ||
+                mn.y > origin.y + avail.y)
+                continue;
+            sf.show(net->surface_id, n.id);
+            float round = n.shape == NodeShape::Circle ? 0.5f * std::min(g.size.x, g.size.y)
+                                                       : style.rounding * cam.zoom;
+            if (net->roster && net->display.marks)
+                draw_presence_mark(dl, mn, mx, net->mark, net->roster->on_rune(n.id), round,
+                                   mark_scale);
+            if (net->shareable && net->display.private_marks && !net->shareable(n))
+                draw_private_mark(dl, mn, mx, mark_scale);
+        }
+    }
 
     // ── snap preview: while a block drags, show where it would connect ──────
     if (ed.drag == EditorState::Drag::Move && ed.moved) {

@@ -17,6 +17,7 @@
 
 #include "voidmaiz/editor.hpp"
 #include "voidmaiz/gesture.hpp" // BlockMetrics (the snap/adjacency conventions)
+#include "voidmaiz/presence.hpp" // CanvasNet (networking, the half a canvas shows)
 #include "voidmaiz/scene.hpp"
 
 #include "imgui.h"
@@ -126,6 +127,27 @@ struct CanvasFx {
     std::vector<GhostFx> ghosts;         // drawn above wires, below live nodes
 };
 
+/* ── networking on the canvas (okf/concepts/networking.md) ────────────────────
+ * The canvas joins presence exactly as any other view does — by declaring what
+ * it shows — except that it already knows its nodes, so the declaration and the
+ * marks are done here and no host writes them. Pass one to edit_canvas and:
+ *   - the canvas declares itself as surface `surface_id`, and every node it
+ *     draws ON SCREEN as shown on it (by the node's id, never its name);
+ *   - it becomes the focused surface while its window has focus;
+ *   - peers who selected a node mark it in their colour (`mark`, via the one
+ *     renderer in netview.cpp), and nodes the share filter keeps local carry a
+ *     padlock.
+ * Leave it null and the canvas behaves exactly as before: an application that
+ * never networks pays nothing and sees nothing. */
+struct CanvasNet {
+    Surfaces* surfaces = nullptr;   // required: this frame's declarations
+    const Roster* roster = nullptr; // null = declare only, draw no marks
+    PresenceDisplay display;        // the RECEIVER's switches
+    ShareFilter shareable;          // empty = no padlocks
+    std::string surface_id = "canvas";
+    Mark mark = Mark::Outline;
+};
+
 /* Render-only (no interaction). Call between Begin()/End(). */
 void draw_canvas(const char* str_id, const Scene& scene, const Camera& cam,
                  const CanvasStyle& style = {});
@@ -152,6 +174,6 @@ CanvasIO edit_canvas(const char* str_id, const Scene& scene, EditorState& ed,
                      const CanvasStyle& style = {}, const AddPalette* palette = nullptr,
                      const FaceRegistry* faces = nullptr,
                      const ContextMenuFn& context_menu = {},
-                     const CanvasFx* fx = nullptr);
+                     const CanvasFx* fx = nullptr, const CanvasNet* net = nullptr);
 
 } // namespace maiz

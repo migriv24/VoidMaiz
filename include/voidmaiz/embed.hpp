@@ -160,8 +160,30 @@ public:
     std::string export_state() const;
 
     /* Register (or override) a glyph from its JSON descriptor. Glyphs are host
-     * config, NOT exported state — re-register after every fresh Core. */
+     * config, NOT exported state — re-register after every fresh Core. (A Core
+     * remembers what was registered through it, so replace_state below can
+     * replay them; a fresh Core still starts with none.) */
     bool register_glyph(std::string_view glyph_json);
+
+    /* Swap the whole state document IN PLACE — the splice a sync layer needs
+     * (okf/concepts/networking.md, stage C).
+     *
+     * Void Core has no in-place load, so this builds a new manager from
+     * `state_json` and retires the old one. What a host would otherwise lose, and
+     * this keeps: the log sink, the effect handler, and every glyph registered
+     * through register_glyph (registered glyphs are host config and do NOT travel
+     * in an exported state — measured 2026-09-19: `"glyphs":{}` after a register).
+     *
+     * What it deliberately does NOT keep: the UNDO HISTORY. Void Core's undo is
+     * memento-based, so snapshots taken before a peer's changes arrived would,
+     * on undo, revert those changes too — and the next sync would send that
+     * revert to everyone as this device's act. Void Palabra names it as the one
+     * place data can still be lost; starting the history over is the only safe
+     * answer with mementos. Callers splice only when the merged state actually
+     * differs, so an idle peer never costs the user their undo.
+     *
+     * Returns false (changing nothing) if the new manager cannot be created. */
+    bool replace_state(std::string_view state_json);
 
     /* Install/replace the log sink; pass {} to remove. */
     void set_log_sink(LogSink sink);

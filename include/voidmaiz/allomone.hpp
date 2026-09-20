@@ -34,6 +34,7 @@
 #pragma once
 
 #include "allomone/allomone.hpp"
+#include "voidmaiz/presence.hpp"
 #include "voidmaiz/usergraph.hpp"
 
 #include <functional>
@@ -138,5 +139,50 @@ bool allo_matches(const Rule& rule, const Subject& subject,
  * rather than an error, exactly as before. */
 void register_user_graph_predicates(allomone::PredicateRegistry& preds,
                                     const UserGraph& graph);
+
+/* ── networking, as Allomone sees it (okf/concepts/networking.md) ─────────────
+ *
+ *   present            some OTHER peer has this subject selected right now
+ *   present "<peer>"   …that peer specifically (profile id or display name)
+ *
+ * So a rule can react to collaboration the way it reacts to data:
+ * `when present -> ring 1` puts a ring on whatever someone else is editing, in
+ * every view that renders the annotation, with no networking code in the view.
+ *
+ * THE ID TRAP. Presence is keyed on the rune's immutable id; many hosts build
+ * their Subjects with `id = n.name` (both of this library's own Allomone
+ * examples do). Comparing the two directly would silently never match — the
+ * exact name-versus-id bug presence exists to avoid, reintroduced one layer up.
+ * Pass the Scene and a subject id that is a rune NAME is resolved to its id
+ * first. Without a scene, subject ids are taken to be rune ids.
+ *
+ * Presence is ephemeral: the annotations these produce are derived, re-derived
+ * every evaluation, and — like every derived annotation — never synced.
+ * `roster` and `scene` are captured by reference and must outlive `preds`. */
+void register_presence_predicates(allomone::PredicateRegistry& preds, const Roster& roster,
+                                  const Scene* scene = nullptr);
+
+/* "May this rune leave this device?" answered by an Allomone rule:
+ *
+ *     when tag "draft" -> share 0
+ *
+ * (Allomone has no bare booleans — a value is a number or a quoted string — so
+ * `share 0` and `share "false"` both keep a rune local; a bare `share false`
+ * does not parse, and a rule that does not parse keeps nothing private.)
+ *
+ * The verdict per rune:
+ *   - no cell            → shareable (no rule spoke)
+ *   - settles 0 / "false" → kept local
+ *   - CONFLICTED         → kept local. Two sources disagreeing about whether
+ *     something is private must never resolve to "send it": un-sending is
+ *     impossible, and the conservative answer costs only a delay until someone
+ *     resolves the conflict.
+ *   - anything else      → shareable
+ *
+ * `merged` is copied into the filter, so the filter is safe to hold after the
+ * evaluation that produced it has gone. Cells are looked up by the node's id,
+ * then by its name, matching whichever key the host's Subjects used. */
+ShareFilter share_by_annotation(const allomone::Merged& merged,
+                                std::string property = "share");
 
 } // namespace maiz

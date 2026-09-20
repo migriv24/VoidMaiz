@@ -312,6 +312,95 @@ int main() {
         if (visited.size() == 1) CHECK(visited[0] == "a=#f00");
     }
 
+    // -- 0.2.14: rune kinds, values on edges, and the presentations split ----
+    {
+        maiz::Core c3;
+        // DECLARED, not registered: the descriptors travel in the document, so
+        // this is also the shape a host that registered nothing would see.
+        CHECK(c3.dispatch("mantle new game").ok);
+        // A descriptor is ONE argument, so it goes through the §6.1 quoter
+        // (embed.hpp's arg) rather than being pasted into the command text --
+        // it is full of the quotes the splitter reads.
+        auto declare = [&](const std::string& descriptor) {
+            return c3.dispatch("glyph declare " + maiz::arg(descriptor)).ok;
+        };
+        CHECK(declare(
+            R"({"glyph":"stat","label":"Stat","kind":"measure","fields":[]})"));
+        CHECK(declare(R"({"glyph":"hero","label":"Hero","fields":["hp"],)"
+                      R"("kinds":{"hp":{"level":"ratio","unit":"hp","min":0,"max":100}},)"
+                      R"("presentations":{"canvas":{"color":"#ff0000"}},)"
+                      R"("hints":{"color":"#00ff00","face":{"w":50,"h":60}}})"));
+        CHECK(declare(R"({"glyph":"flies","label":"Flies","kind":"act","fields":[]})"));
+        c3.dispatch("rune new stat speed");
+        c3.dispatch("measure speed --level ratio --unit m/s --min 0");
+        c3.dispatch("rune new hero player");
+        c3.dispatch("rune new flies flight");
+        c3.dispatch("link player speed --weight 5");
+        c3.dispatch("link player flight --relation does"); // an act target is NOT a value
+
+        maiz::Scene g = maiz::project_scene(c3);
+        const maiz::SceneNode* speed = g.find("speed");
+        const maiz::SceneNode* player = g.find("player");
+        const maiz::SceneNode* flight = g.find("flight");
+        CHECK(speed && player && flight);
+
+        // Kinds, off the descriptor. Default is entity, and `hero` never said.
+        if (speed) CHECK(speed->kind == maiz::RuneKind::Measure);
+        if (flight) CHECK(flight->kind == maiz::RuneKind::Act);
+        if (player) CHECK(player->kind == maiz::RuneKind::Entity);
+
+        // The measure rune's own quantity -- read from the RUNE, not the glyph.
+        if (speed) {
+            CHECK(speed->quantity.present);
+            CHECK(speed->quantity.unit == "m/s");
+            CHECK(speed->quantity.level == "ratio");
+            CHECK(speed->quantity.has_min && speed->quantity.min == 0.0);
+            CHECK(!speed->quantity.bounded()); // a min alone does not bound it
+        }
+        if (player) CHECK(!player->quantity.present);
+
+        // The glyph's `kinds` map annotates a FIELD with the same shape.
+        CHECK(player && player->fields.size() == 1);
+        if (player && player->fields.size() == 1) {
+            const maiz::Quantity& q = player->fields[0].quantity;
+            CHECK(player->fields[0].key == "hp");
+            CHECK(q.present && q.level == "ratio" && q.unit == "hp");
+            CHECK(q.bounded() && q.min == 0.0 && q.max == 100.0);
+        }
+
+        // presentations.canvas outranks hints PER KEY: the color comes from
+        // canvas, the face size from hints, and neither erases the other.
+        if (player) {
+            CHECK(player->has_color && player->rgb == 0xff0000u);
+            CHECK(player->w == 50.0f && player->h == 60.0f);
+        }
+
+        // The value edge, and only it. Direction is normative: player->speed
+        // asserts, and an edge to an act rune is exactly what it always was.
+        const maiz::SceneWire* to_speed = nullptr;
+        const maiz::SceneWire* to_flight = nullptr;
+        for (const auto& w : g.wires) {
+            if (w.to == "speed") to_speed = &w;
+            if (w.to == "flight") to_flight = &w;
+        }
+        CHECK(to_speed && to_speed->is_value);
+        CHECK(to_flight && !to_flight->is_value);
+        if (to_speed) {
+            CHECK(to_speed->weight == 5.0);
+            CHECK(maiz::value_label(g, *to_speed) == "5 m/s"); // trimmed, with the unit
+        }
+        if (to_flight) CHECK(maiz::value_label(g, *to_flight).empty());
+
+        // A document reopened by a host that registered NOTHING still projects
+        // its fields and kinds -- which is the whole point of declaring.
+        maiz::Core reopened(c3.export_state());
+        maiz::Scene r = maiz::project_scene(reopened);
+        const maiz::SceneNode* rp = r.find("player");
+        CHECK(rp && rp->fields.size() == 1 && rp->kind == maiz::RuneKind::Entity);
+        const maiz::SceneNode* rs = r.find("speed");
+        CHECK(rs && rs->kind == maiz::RuneKind::Measure && rs->quantity.unit == "m/s");
+    }
+
     if (failures == 0) {
         std::cout << "OK — projection smoke passed\n";
         return 0;

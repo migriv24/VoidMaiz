@@ -22,6 +22,49 @@
 
 namespace maiz {
 
+/* What a number IS (Void Core 0.2.14, SPEC §3.3.2) — the annotation the core
+ * stores and never enforces: `{level, unit, min, max}`. It reaches a Scene from
+ * two places, deliberately the same shape in both, because an application that
+ * keeps a value in a FIELD and one that puts it on an EDGE are describing the
+ * same quantity: a glyph's `kinds` map annotates a field (SceneField::quantity),
+ * and a measure rune's `quantity` annotates the dimension itself
+ * (SceneNode::quantity).
+ *
+ * `level` is the measurement level — nominal (=), ordinal (<), interval
+ * (differences, no true zero: a date), ratio (ratios, true zero: a speed) —
+ * and it decides which operations mean anything. Void Maiz does not enforce it
+ * either; it READS it, which is the point: a bounded ratio field can be drawn
+ * as a knob and an interval one cannot, and until 0.2.14 there was nowhere to
+ * say so except a host-private hint. */
+struct Quantity {
+    bool present = false;   // false = the model said nothing; every other member is then unset
+    std::string level;      // "nominal" | "ordinal" | "interval" | "ratio"; "" = unstated
+    std::string unit;       // free text ("m/s", "grid-columns"); "" = dimensionless/unstated
+    bool has_min = false, has_max = false;
+    double min = 0.0, max = 0.0;
+
+    bool bounded() const { return has_min && has_max && max > min; }
+};
+
+/* The rune's KIND (SPEC §3.3.1), from its glyph descriptor. Structural, not
+ * domain-specific, and the reason it matters to a node-graph library is arity:
+ * an edge label can only ever express a BINARY relation, so a ternary fact
+ * ("Superman flies across the sky") has to reify its verb as a node with typed
+ * ports for the roles — which is an interaction-net agent, which is the thing
+ * this library already draws. An `act` rune is that node.
+ *
+ * Default Entity, and an unknown/absent kind reads as Entity: every rune that
+ * existed before 0.2.14 is one, and a projection degrades rather than blanks.
+ *
+ * DELIBERATELY NOT γ/δ/ε. Void Core proposed those names and withdrew them
+ * because this library already spends them in Lafont's sense, about glyphs
+ * (voidmaiz/reduce.hpp: `swap` as "Lafont's γγ", and ε as the ERASER — an
+ * arity-zero agent that terminates a wire, close to the opposite of "a concept
+ * that carries a value"). The reducer contract is untouched by any of this:
+ * `signatures` maps glyph → aux-port count and lives in the reduce spec, while
+ * `kind` is a different key on the glyph DESCRIPTOR. Neither reads the other. */
+enum class RuneKind { Entity, Act, Measure };
+
 struct ScenePort {
     int index = 0;         // net port index (1..n for auxiliary; 0 only for the principal)
     std::string name;      // from glyph hints, or synthesized "p<i>"
@@ -45,6 +88,11 @@ struct SceneField {
                             // ("Text (English)" for the key `text_en`); empty =
                             // fall back to the key. Lights up every field
                             // surface at once, exactly like `editor`.
+    Quantity quantity;      // the glyph's `kinds[key]` annotation (SPEC §3.3.2).
+                            // SCHEMA, not presentation — so it may PICK a
+                            // default editor when the glyph declared none (a
+                            // bounded ratio field is a knob), and a declared
+                            // `editor` always wins over that inference.
 };
 
 /* The node's body geometry (okf/concepts/node-geometry.md): shape is
@@ -62,6 +110,16 @@ struct SceneNode {
     std::string glyph;
     std::string label;     // glyph descriptor label, fallback = glyph name
     std::vector<std::string> tags;
+
+    /* The glyph descriptor's `kind` (SPEC §3.3.1). Entity unless the
+     * descriptor says otherwise — including when no descriptor was supplied. */
+    RuneKind kind = RuneKind::Entity;
+
+    /* The rune's own `quantity` (SPEC §3.2) — present only on a MEASURE rune,
+     * and read from the RUNE rather than the glyph on purpose: `health`,
+     * `speed` and `strength` can share one schema and differ only in what they
+     * measure. `present` is false for every entity and act rune. */
+    Quantity quantity;
 
     NodeShape shape = NodeShape::Window;
     int shape_sides = 3;      // Polygon only
@@ -115,6 +173,23 @@ struct SceneWire {
      * Anything richer than what an edge natively carries still belongs on a
      * rune (which is what Hormiga did, and was the better design anyway). */
     double weight = 1.0;
+    /* THE WEIGHT IS A VALUE, NOT A STRENGTH (SPEC §3.7.1, Void Core 0.2.14).
+     * True when `to` resolves to a MEASURE rune, which makes this edge an
+     * attribute assertion — `player --[weight 5]--> speed` says the player's
+     * speed is 5, and the unit comes off the measure rune
+     * (`scene.find(wire.to)->quantity.unit`, or `value_label` in project.hpp,
+     * which is the one spelling).
+     *
+     * THE DIRECTION IS NORMATIVE: `to` names the measure. An assertion has an
+     * owner and a dimension and they are not interchangeable, so this is never
+     * inferred from the `from` end.
+     *
+     * A renderer must branch on it, because the two readings look nothing
+     * alike: a strength is properly drawn as thickness or opacity relative to
+     * the other wires, and a value is not comparable to anything on the canvas
+     * — 900 rpm drawn nine hundred times thicker than "supports, 1.0" is a lie
+     * the projection would otherwise be complicit in. Draw a value as a label. */
+    bool is_value = false;
     bool active = false;   // host-set after projection (e.g. a rule-bearing
                            // active pair); the canvas renders it emphasized
 };

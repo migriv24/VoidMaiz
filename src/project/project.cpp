@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
 #include <cstdlib>
 #include <map>
 #include <stdexcept>
@@ -76,26 +77,116 @@ bool parse_port_relation(const std::string& rel, int& i, int& j) {
     return true;
 }
 
+/* THE CANVAS PRESENTATION (Void Core 0.2.14, SPEC §3.3).
+ *
+ * A descriptor used to answer two questions in one object: what IS this rune
+ * (schema — `fields`, `kind`, `kinds`: true in every mantle, for every output,
+ * forever) and how does it APPEAR (presentation — of which there is one per
+ * modality). 0.2.14 split them: `presentations` is a map keyed by modality
+ * that the core stores and never interprets, and `canvas` is the conventional
+ * home for what a host has been calling `hints`.
+ *
+ * Void Maiz IS the canvas modality, so `presentations.canvas` is our object.
+ * We layer it over `hints` PER KEY rather than instead of it, for one reason:
+ * a glyph author moves keys across one at a time, and an all-or-nothing switch
+ * would make a descriptor that has both silently lose half its look. Canvas
+ * wins where both speak; `hints` keeps working untouched where it doesn't,
+ * which is every descriptor written before today. */
+struct Presentation {
+    const cJSON* canvas = nullptr;
+    const cJSON* hints = nullptr;
+
+    static Presentation of(const cJSON* descriptor) {
+        Presentation p;
+        if (!descriptor) return p;
+        const cJSON* h = cJSON_GetObjectItemCaseSensitive(const_cast<cJSON*>(descriptor), "hints");
+        if (cJSON_IsObject(h)) p.hints = h;
+        const cJSON* pres =
+            cJSON_GetObjectItemCaseSensitive(const_cast<cJSON*>(descriptor), "presentations");
+        if (cJSON_IsObject(pres)) {
+            const cJSON* c = cJSON_GetObjectItemCaseSensitive(const_cast<cJSON*>(pres), "canvas");
+            if (cJSON_IsObject(c)) p.canvas = c;
+        }
+        return p;
+    }
+
+    explicit operator bool() const { return canvas || hints; }
+
+    const cJSON* get(const char* key) const {
+        if (canvas)
+            if (const cJSON* v =
+                    cJSON_GetObjectItemCaseSensitive(const_cast<cJSON*>(canvas), key))
+                return v;
+        if (hints)
+            if (const cJSON* v = cJSON_GetObjectItemCaseSensitive(const_cast<cJSON*>(hints), key))
+                return v;
+        return nullptr;
+    }
+
+    const char* str(const char* key, const char* fallback = "") const {
+        const cJSON* v = get(key);
+        return cJSON_IsString(v) ? v->valuestring : fallback;
+    }
+};
+
+/* `{level, unit, min, max}` (SPEC §3.3.2) → Quantity. Read, never enforced:
+ * an out-of-range level is stored by the core only if the core accepted it, and
+ * a projection is not the place to re-litigate a validation the model already
+ * ran. Absent object → `present == false`, which is not the same as a quantity
+ * that states nothing. */
+Quantity read_quantity(const cJSON* q) {
+    Quantity out;
+    if (!cJSON_IsObject(q)) return out;
+    out.present = true;
+    out.level = gstr(q, "level");
+    out.unit = gstr(q, "unit");
+    if (const cJSON* mn = cJSON_GetObjectItemCaseSensitive(const_cast<cJSON*>(q), "min");
+        cJSON_IsNumber(mn)) {
+        out.has_min = true;
+        out.min = mn->valuedouble;
+    }
+    if (const cJSON* mx = cJSON_GetObjectItemCaseSensitive(const_cast<cJSON*>(q), "max");
+        cJSON_IsNumber(mx)) {
+        out.has_max = true;
+        out.max = mx->valuedouble;
+    }
+    return out;
+}
+
+/* The descriptor's `kind` (SPEC §3.3.1). Unknown or absent → Entity: every
+ * rune written before kinds existed is one, and a projection that blanked a
+ * node over a typo in a type it does not own would be worse than one that
+ * draws it the way it always did. */
+RuneKind read_kind(const cJSON* descriptor) {
+    if (!descriptor) return RuneKind::Entity;
+    std::string_view k = gstr(descriptor, "kind");
+    if (k == "act") return RuneKind::Act;
+    if (k == "measure") return RuneKind::Measure;
+    return RuneKind::Entity;
+}
+
 void apply_glyph_hints(SceneNode& node, const cJSON* descriptor, const cJSON* content) {
     if (!descriptor) return;
     node.label = gstr(descriptor, "label", node.glyph.c_str());
-    const cJSON* hints = cJSON_GetObjectItemCaseSensitive(const_cast<cJSON*>(descriptor), "hints");
-    if (!cJSON_IsObject(hints)) return;
+    /* Schema first — `kind` is what the rune IS, and it is read whether or not
+     * the glyph ever says how the rune looks. */
+    node.kind = read_kind(descriptor);
+    const Presentation pres = Presentation::of(descriptor);
+    if (!pres) return;
 
     /* Shape (okf/concepts/node-geometry.md): notation bodies. */
-    if (const cJSON* shape = cJSON_GetObjectItemCaseSensitive(const_cast<cJSON*>(hints), "shape");
-        cJSON_IsObject(shape)) {
-        std::string_view kind = gstr(shape, "kind");
-        if (kind == "triangle") {
+    if (const cJSON* shape = pres.get("shape"); cJSON_IsObject(shape)) {
+        std::string_view shape_kind = gstr(shape, "kind"); // the BODY's kind, not the rune's
+        if (shape_kind == "triangle") {
             node.shape = NodeShape::Polygon;
             node.shape_sides = 3;
-        } else if (kind == "circle") {
+        } else if (shape_kind == "circle") {
             node.shape = NodeShape::Circle;
-        } else if (kind == "polygon") {
+        } else if (shape_kind == "polygon") {
             node.shape = NodeShape::Polygon;
             const cJSON* sides = cJSON_GetObjectItemCaseSensitive(const_cast<cJSON*>(shape), "sides");
             node.shape_sides = cJSON_IsNumber(sides) ? std::max(3, (int)sides->valuedouble) : 3;
-        } else if (kind == "block") {
+        } else if (shape_kind == "block") {
             node.shape = NodeShape::Block; // statement block (node-blocks.md)
         }
         const cJSON* rot = cJSON_GetObjectItemCaseSensitive(const_cast<cJSON*>(shape), "rot");
@@ -108,19 +199,18 @@ void apply_glyph_hints(SceneNode& node, const cJSON* descriptor, const cJSON* co
     /* Subgraph entry: hints.enter names the content field carrying a mantle
      * name (a host convention — the core's mantles are flat; nesting is how
      * a view reads them, VLS's Loop pattern generalized). */
-    if (const char* enter_field = gstr(hints, "enter", nullptr); enter_field && content) {
+    if (const char* enter_field = pres.str("enter", nullptr); enter_field && content) {
         const cJSON* v =
             cJSON_GetObjectItemCaseSensitive(const_cast<cJSON*>(content), enter_field);
         if (cJSON_IsString(v)) node.enter_mantle = v->valuestring;
     }
 
     unsigned rgb = 0;
-    if (read_hex_color(gstr(hints, "color", nullptr), rgb)) {
+    if (read_hex_color(pres.str("color", nullptr), rgb)) {
         node.rgb = rgb;
         node.has_color = true;
     }
-    if (const cJSON* face = cJSON_GetObjectItemCaseSensitive(const_cast<cJSON*>(hints), "face");
-        cJSON_IsObject(face)) {
+    if (const cJSON* face = pres.get("face"); cJSON_IsObject(face)) {
         const cJSON* w = cJSON_GetObjectItemCaseSensitive(const_cast<cJSON*>(face), "w");
         const cJSON* h = cJSON_GetObjectItemCaseSensitive(const_cast<cJSON*>(face), "h");
         if (cJSON_IsNumber(w)) node.w = (float)w->valuedouble;
@@ -128,7 +218,7 @@ void apply_glyph_hints(SceneNode& node, const cJSON* descriptor, const cJSON* co
     }
     /* Ports: net index 0 is the principal; auxiliaries take 1..n in
      * declaration order (skipping the principal entry wherever it appears). */
-    const cJSON* ports = cJSON_GetObjectItemCaseSensitive(const_cast<cJSON*>(hints), "ports");
+    const cJSON* ports = pres.get("ports");
     if (!cJSON_IsArray(ports)) return;
     int next_aux = 1;
     const cJSON* pd = nullptr;
@@ -162,11 +252,13 @@ void apply_glyph_hints(SceneNode& node, const cJSON* descriptor, const cJSON* co
 void fill_fields(SceneNode& node, const cJSON* descriptor, const cJSON* content) {
     if (!descriptor) return;
     const cJSON* keys = cJSON_GetObjectItemCaseSensitive(const_cast<cJSON*>(descriptor), "fields");
-    const cJSON* hints = cJSON_GetObjectItemCaseSensitive(const_cast<cJSON*>(descriptor), "hints");
-    const cJSON* editors =
-        hints ? cJSON_GetObjectItemCaseSensitive(const_cast<cJSON*>(hints), "editors") : nullptr;
-    const cJSON* labels =
-        hints ? cJSON_GetObjectItemCaseSensitive(const_cast<cJSON*>(hints), "labels") : nullptr;
+    /* `editors` and `labels` are PRESENTATION (how the field appears), so they
+     * come through the canvas layer; `kinds` is SCHEMA (what the number is), so
+     * it is read straight off the descriptor and is the same in every modality. */
+    const Presentation pres = Presentation::of(descriptor);
+    const cJSON* editors = pres.get("editors");
+    const cJSON* labels = pres.get("labels");
+    const cJSON* kinds = cJSON_GetObjectItemCaseSensitive(const_cast<cJSON*>(descriptor), "kinds");
     const cJSON* k = nullptr;
     cJSON_ArrayForEach(k, keys) {
         if (!cJSON_IsString(k)) continue;
@@ -182,6 +274,9 @@ void fill_fields(SceneNode& node, const cJSON* descriptor, const cJSON* content)
                 cJSON_GetObjectItemCaseSensitive(const_cast<cJSON*>(labels), f.key.c_str());
             if (cJSON_IsString(l)) f.label = l->valuestring;
         }
+        if (kinds)
+            f.quantity = read_quantity(
+                cJSON_GetObjectItemCaseSensitive(const_cast<cJSON*>(kinds), f.key.c_str()));
         const cJSON* v =
             content ? cJSON_GetObjectItemCaseSensitive(const_cast<cJSON*>(content), f.key.c_str())
                     : nullptr;
@@ -299,6 +394,12 @@ Scene project_scene(std::string_view state_json, std::string_view glyphs_json,
         const cJSON* content = cJSON_GetObjectItemCaseSensitive(const_cast<cJSON*>(rune), "content");
         apply_glyph_hints(node, descriptor, content);
         fill_fields(node, descriptor, content);
+        /* `quantity` sits beside `content`, not in it (SPEC §3.2) — the core
+         * has to be able to read it, and so does every projection of it. Read
+         * from the RUNE: `health` and `speed` share one measure glyph and
+         * differ only in what they measure. */
+        node.quantity = read_quantity(
+            cJSON_GetObjectItemCaseSensitive(const_cast<cJSON*>(rune), "quantity"));
 
         /* Chrome state, view-state-as-content (the same interim tier as pos):
          * content.size overrides hints.face; content.collapsed folds the node;
@@ -355,6 +456,11 @@ Scene project_scene(std::string_view state_json, std::string_view glyphs_json,
         }
         if (!from_node || !to_node) continue; // dangling
 
+        /* SPEC §3.7.1: `to` names a measure rune ⇒ this edge is an ATTRIBUTE
+         * ASSERTION and its weight is that attribute's value, not a strength.
+         * Decided by the TARGET only, because the direction is normative. */
+        wire.is_value = (to_node->kind == RuneKind::Measure);
+
         int i = -1, j = -1;
         if (parse_port_relation(wire.relation, i, j)) {
             wire.from_port = i;
@@ -390,6 +496,21 @@ Scene project_scene(std::string_view state_json, std::string_view glyphs_json,
 Scene project_scene(Core& core, const ProjectOptions& opts) {
     Result glyphs = core.dispatch("glyphs");
     return project_scene(core.export_state(), glyphs.data, opts);
+}
+
+std::string value_label(const Scene& scene, const SceneWire& wire) {
+    if (!wire.is_value) return {};
+    /* %g rather than a fixed precision: the weight came out of JSON as a
+     * double and 5 must read back as "5". */
+    char buf[48];
+    std::snprintf(buf, sizeof buf, "%g", wire.weight);
+    std::string out(buf);
+    const SceneNode* measure = scene.find(wire.to);
+    if (measure && !measure->quantity.unit.empty()) {
+        out += ' ';
+        out += measure->quantity.unit;
+    }
+    return out;
 }
 
 std::string extract_mantle(std::string_view state_json, std::string_view name) {

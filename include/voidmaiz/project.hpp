@@ -133,6 +133,21 @@ void for_each_decoration(
     const Scene& scene, const Merged& merged, std::string_view property,
     const std::function<void(const SceneNode&, const std::string&)>& fn);
 
+/* ── reading an attribute assertion ──────────────────────────────────────────
+ *
+ * An edge whose `to` is a MEASURE rune asserts a value rather than a strength
+ * (SPEC §3.7.1, Void Core 0.2.14), and `SceneWire::is_value` says which reading
+ * applies. The value is the weight; the UNIT is on the measure rune at the far
+ * end, so formatting one takes a scene lookup — which is exactly the shape that
+ * two hosts diverge on, the way `field_of` diverged on `null` before it shipped.
+ * So it ships once, here, before there are two of them.
+ *
+ * "5 m/s" for a wire with a unit, "5" for a dimensionless one, "" for a wire
+ * that is not an assertion at all (so a renderer can call it unconditionally
+ * and draw a label only when it comes back non-empty). Trailing zeros are
+ * trimmed: the model stores 5 and a reader should see `5`, not `5.000000`. */
+std::string value_label(const Scene& scene, const SceneWire& wire);
+
 /* ── the filter convention ───────────────────────────────────────────────────
  * ONE tag grammar filters every surface (widget-registry.md's tag-awareness
  * clause): the bag a node offers to Core::tag_match is its tags + its name

@@ -37,6 +37,12 @@ if(ANDROID)
     "${VOIDCORE_ROOT}/src/dispatch/verbs_lifecycle.c"
     "${VOIDCORE_ROOT}/src/dispatch/verbs_script.c"
     "${VOIDCORE_ROOT}/src/dispatch/undo.c"
+    # journal.c arrived in Void Core 0.2.8-0.2.12 (the command journal) and was
+    # missed here, because the desktop build links the prebuilt DLL and never
+    # walks this list — so only an Android/cross build could have found it, and
+    # nobody had run one since. Kept in sync deliberately: this list is the one
+    # place Void Maiz has to know the core's file layout.
+    "${VOIDCORE_ROOT}/src/dispatch/journal.c"
     "${VOIDCORE_ROOT}/src/dispatch/lifecycle.c"
     "${VOIDCORE_ROOT}/src/scripts/voidscript.c"
     "${VOIDCORE_ROOT}/src/scripts/vs_interp.c"
@@ -95,6 +101,8 @@ add_library(voidmaiz STATIC
   src/embed/embed.cpp
   src/project/project.cpp
   src/gesture/gesture.cpp
+  src/touch/touch.cpp
+  src/presence/presence.cpp
   src/action/action.cpp
   src/usergraph/usergraph.cpp
   src/allomone/host_predicates.cpp
@@ -149,6 +157,33 @@ if(NOT MSVC)
   target_compile_options(voidmaiz_headless PRIVATE -Wall -Wextra)
 endif()
 
+# ── Networking, stage C: Void Palabra's sync (optional) ──────────────────────
+# okf/concepts/networking.md. The ONLY target that links Void Palabra, and it is
+# built only when the sibling repo is present: an application that never
+# networks never needs Palabra checked out, and the build proves it.
+#
+# Palabra is embedded the way it asks to be (its CMakeLists §"Consumed two ways")
+# — as a target, never a copied source list; the one list we did copy (Void
+# Core's, for Android) went months without a file. VENDOR_CJSON=OFF because we
+# already compile cJSON: one copy per process.
+set(VOIDPALABRA_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../VoidPalabra" CACHE PATH
+    "Path to the Void Palabra repository (optional: enables voidmaiz_net)")
+if(EXISTS "${VOIDPALABRA_ROOT}/include/voidpalabra/sync.hpp")
+  set(VOIDPALABRA_VENDOR_CJSON OFF CACHE BOOL "" FORCE)
+  add_subdirectory("${VOIDPALABRA_ROOT}" voidpalabra)
+  add_library(voidmaiz_net STATIC src/net/net.cpp)
+  target_include_directories(voidmaiz_net PUBLIC include PRIVATE vendor)
+  target_link_libraries(voidmaiz_net PUBLIC voidmaiz voidpalabra::voidpalabra)
+  target_compile_definitions(voidmaiz_net PRIVATE CJSON_HIDE_SYMBOLS)
+  if(NOT MSVC)
+    target_compile_options(voidmaiz_net PRIVATE -Wall -Wextra)
+  endif()
+  set(VOIDMAIZ_HAVE_NET ON)
+else()
+  message(STATUS "Void Palabra not found at ${VOIDPALABRA_ROOT}: voidmaiz_net is not built")
+  set(VOIDMAIZ_HAVE_NET OFF)
+endif()
+
 # ── Vendored UI substrate (Phase 2): Dear ImGui over the platform's GL ──────
 # Desktop: GLFW + OpenGL 3. Android: NativeActivity glue + GLES3 — GLFW has no
 # Android port; the platform shim in the app repo owns the EGL context.
@@ -191,6 +226,8 @@ add_library(voidmaiz_view STATIC
   src/view/code.cpp
   src/view/face.cpp
   src/view/inspector.cpp
+  src/view/mobile.cpp
+  src/view/netview.cpp
   src/view/widget.cpp
   src/view/widgets.cpp
 )
@@ -210,6 +247,18 @@ target_link_libraries(maiz_hello PRIVATE voidmaiz voidmaiz_imgui)
 add_executable(maiz_canvas examples/canvas_window.cpp)
 target_link_libraries(maiz_canvas PRIVATE voidmaiz_view)
 
+# The touch shell, on a desktop: a phone-proportioned window driven entirely
+# through maiz::TouchRecognizer, with the mouse as a finger (Alt adds a second).
+# The reference a mobile host copies — and the only way to LOOK at the mobile
+# kit without building an APK.
+add_executable(maiz_mobile examples/mobile_window.cpp)
+target_link_libraries(maiz_mobile PRIVATE voidmaiz_view)
+
+# Networking, the half an application shows: three unrelated views, one
+# declaration each, identical marks; simulated peers through the real codec.
+add_executable(maiz_network examples/network_window.cpp)
+target_link_libraries(maiz_network PRIVATE voidmaiz_view)
+
 # The Allomone test vehicle: script workbench + tagged playground.
 add_executable(maiz_allomone examples/allomone_playground.cpp)
 target_link_libraries(maiz_allomone PRIVATE voidmaiz_view voidmaiz_allomone)
@@ -227,6 +276,12 @@ add_test(NAME project_smoke COMMAND maiz_project_smoke)
 add_executable(maiz_gesture_smoke tests/gesture_smoke.cpp)
 target_link_libraries(maiz_gesture_smoke PRIVATE voidmaiz)
 add_test(NAME gesture_smoke COMMAND maiz_gesture_smoke)
+
+# The touch recognizer, driven with literal contact sets — no window, no
+# device. The point of keeping it on the UI-free side is that this test exists.
+add_executable(maiz_touch_smoke tests/touch_smoke.cpp)
+target_link_libraries(maiz_touch_smoke PRIVATE voidmaiz)
+add_test(NAME touch_smoke COMMAND maiz_touch_smoke)
 
 add_executable(maiz_replay_smoke tests/replay_smoke.cpp)
 target_link_libraries(maiz_replay_smoke PRIVATE voidmaiz)
@@ -246,6 +301,29 @@ add_test(NAME effect_scene_smoke COMMAND maiz_effect_scene_smoke)
 add_executable(maiz_host_predicates_smoke tests/host_predicates_smoke.cpp)
 target_link_libraries(maiz_host_predicates_smoke PRIVATE voidmaiz)
 add_test(NAME host_predicates_smoke COMMAND maiz_host_predicates_smoke)
+
+# The whole chain in one test: recognizer -> observed channel -> UserGraph ->
+# host predicates -> the SIBLING REPO's evaluator. Links voidmaiz_allomone so a
+# broken re-export fails here rather than in a host.
+add_executable(maiz_touch_usergraph_smoke tests/touch_usergraph_smoke.cpp)
+target_link_libraries(maiz_touch_usergraph_smoke PRIVATE voidmaiz_allomone)
+add_test(NAME touch_usergraph_smoke COMMAND maiz_touch_usergraph_smoke)
+
+# Networking, the half an application shows (okf/concepts/networking.md): no
+# socket, no Palabra. Links voidmaiz_allomone for the presence predicates and
+# the Allomone-answered share filter.
+add_executable(maiz_presence_smoke tests/presence_smoke.cpp)
+target_link_libraries(maiz_presence_smoke PRIVATE voidmaiz_allomone)
+add_test(NAME presence_smoke COMMAND maiz_presence_smoke)
+
+# Stage C: real Cores syncing through Void Palabra over an in-memory lossy wire.
+# Only when Palabra is present — the same condition as the target itself.
+if(VOIDMAIZ_HAVE_NET)
+  add_executable(maiz_net_smoke tests/net_smoke.cpp)
+  target_link_libraries(maiz_net_smoke PRIVATE voidmaiz_net)
+  target_include_directories(maiz_net_smoke PRIVATE vendor)
+  add_test(NAME net_smoke COMMAND maiz_net_smoke)
+endif()
 
 add_executable(maiz_usergraph_smoke tests/usergraph_smoke.cpp)
 target_link_libraries(maiz_usergraph_smoke PRIVATE voidmaiz)

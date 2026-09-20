@@ -37,6 +37,26 @@ needs no distinction would be terminology for its own sake.
   (annihilate, commute, expand) according to the mantle's rules — executed by
   the core's Reduce, never by Void Maiz.
 
+## An edge weight may be a VALUE (Void Core 0.2.14)
+
+Neither wire kind changes, but one reading of a wire's `weight` does. When the
+`to` end resolves to a rune whose glyph is `kind: "measure"`, SPEC §3.7.1 makes
+the edge an **attribute assertion** — `player --[weight 5]--> speed` says the
+player's speed is 5 m/s, with the unit on the measure rune. `SceneWire::is_value`
+marks it, decided by the target alone because the direction is normative.
+
+**The canvas labels an assertion; it never thickens one.** A strength and a value
+are not commensurable, so a renderer that mapped both onto line weight would
+claim 900 rpm is nine hundred times stronger than "supports, 1.0". Use
+`value_label(scene, wire)`. Full reasoning:
+[rune kinds and quantities](/concepts/rune-kinds.md).
+
+The same release makes the **act rune** an explicit thing, and it is worth
+noticing here rather than anywhere else: an act — a verb reified as a node with
+typed ports for its roles, because an edge label can only carry a binary
+relation — **is an interaction-net agent**. It is the structure this page has
+described since 2026-07-10, arriving under a modelling name.
+
 ## The port model
 
 - Every node has **exactly one principal port** (directionless, untyped).

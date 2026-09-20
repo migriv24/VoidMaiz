@@ -92,8 +92,21 @@ the table's cells when it lands. The library kit ships as
 (widget.cpp); the face widgets are thin frames over the same cores. The
 kit's disabled-when-wired check matches an input port named `<key>` OR
 `p:<key>` — the params-as-ports convention proven in the Python VLS (#14a),
-blessed library-wide 2026-07-16. A missing/unknown spec falls back to staged text — a declared
-field is never uneditable. Widgets that aren't field-shaped (domain buttons,
+blessed library-wide 2026-07-16. A missing/unknown spec falls back — first through the field's
+QUANTITY, then to staged text — and a declared field is never uneditable.
+
+**A quantity annotation may pick the editor a hint did not declare** (Void Core
+0.2.14; [rune kinds](/concepts/rune-kinds.md)). `hints.editors` is
+*presentation*: host-private, written once per glyph per host. A glyph's `kinds`
+map is *schema* — `{level, unit, min, max}` per field, surfaced as
+`SceneField.quantity` — and it says enough to choose honestly: a **bounded
+ratio** field is a magnitude with a true zero and a full sweep, so it becomes a
+knob; an unbounded ratio field becomes a drag-number clamped by whichever bound
+exists; **interval** (a date, a temperature) gets neither, because with no true
+zero a sweep from `min` draws a proportion that does not exist; nominal and
+ordinal are not numbers a drag control should touch. The inference runs strictly
+AFTER the `field.editor` branch, so **presentation always outranks schema** and
+a glyph author who said what they wanted is never overruled by what we guessed. Widgets that aren't field-shaped (domain buttons,
 drop zones, whole panes) skip the registry: implementing the context shape by
 hand IS speaking the protocol. Faces keep their own per-glyph registry
 (`FaceRegistry`) — a face is a whole-body renderer, not a field editor.

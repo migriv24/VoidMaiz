@@ -30,6 +30,7 @@
 #include "voidmaiz/annotate.hpp"
 #include "voidmaiz/code.hpp"
 #include "voidmaiz/embed.hpp"
+#include "voidmaiz/glhost.hpp"
 #include "voidmaiz/project.hpp"
 #include "voidmaiz/sentinel.hpp"
 #include "voidmaiz/usergraph.hpp"
@@ -329,8 +330,7 @@ static void seed(maiz::Core& core) {
 int main() {
     glfwSetErrorCallback([](int e, const char* d) { std::fprintf(stderr, "glfw %d: %s\n", e, d); });
     if (!glfwInit()) return 1;
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+    const char* glsl = maiz::gl_context_hints(); // per-platform; macOS needs 3.2 core
     GLFWwindow* window = glfwCreateWindow(1340, 820, "Void Maiz — Allomone", nullptr, nullptr);
     if (!window) { glfwTerminate(); return 1; }
     glfwMakeContextCurrent(window);
@@ -339,7 +339,7 @@ int main() {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init("#version 130");
+    ImGui_ImplOpenGL3_Init(glsl);
     maiz::enable_docking();
     ImGui::StyleColorsDark();
     // Its own layout file: sharing `imgui.ini` with the canvas demo meant this
@@ -530,7 +530,17 @@ int main() {
 
         std::vector<maiz::Subject> subjects;
         for (const auto& n : pg.nodes)
-            subjects.push_back({.id = n.name, .kind = n.glyph, .name = n.name,
+                    /* `.kind = n.glyph` — THE GLYPH NAME, and it must stay that.
+         * Allomone's `kind` is whatever the host puts on a Subject, and every
+         * script asks about the domain type (`when kind "slider"`, and `glyph
+         * "x"` is an exact alias for `kind "x"`). Since Void Core 0.2.14 a
+         * SceneNode also has `.kind` — entity/act/measure — and mapping THAT
+         * here would stamp "entity" on nearly every subject and silently stop
+         * every `kind "…"` rule from matching. It does not error: a rule that
+         * stops matching produces no annotation to notice. Carry the rune kind
+         * as `runekind` (a host predicate or a `runekind:measure` tag) if a
+         * script ever needs it. (Void Allomone, 2026-09-04.) */
+        subjects.push_back({.id = n.name, .kind = n.glyph, .name = n.name,
                                 .mantle = "playground", .tags = n.tags});
 
         /* THE THIRD VOCABULARY: what a rune actually HAS
@@ -1556,7 +1566,17 @@ int main() {
                         /* The six spellings a GUI uses, offered as a
                          * convenience — `channel` is an open string since
                          * 2026-08-29, so this list is a vocabulary and not a
-                         * type. A non-GUI host writes its own. */
+                         * type. A non-GUI host writes its own.
+                         *
+                         * THIS COMBO IS A SIMULATION CONTROL, not the pattern to
+                         * copy. It exists because this is a script WORKBENCH:
+                         * you pick a channel to see what a `device` rule would
+                         * do on hardware you are not holding. A real host reads
+                         * the channel from the input layer —
+                         * `maiz::TouchFrame::channel`, added 2026-09-13 — because
+                         * a self-reported channel makes `device` match a claim
+                         * about the input rather than the input. See
+                         * examples/mobile_window.cpp for the honest feed. */
                         const char* devs[] = {"pointer", "touch", "pen", "gamepad", "voice", "xr"};
                         int di = 0;
                         for (int k = 0; k < 6; ++k) if (channel == devs[k]) di = k;

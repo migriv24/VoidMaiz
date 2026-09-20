@@ -596,6 +596,28 @@ bool widget_field(WidgetContext& ctx, const WidgetRegistry& reg, const SceneNode
         // unknown kind: fall through — a missing registration must never make
         // a declared field uneditable
     }
+    /* No DECLARED editor, but the glyph may have said what the number IS
+     * (`kinds`, SPEC §3.3.2, Void Core 0.2.14). A quantity is schema, so it
+     * may pick a DEFAULT — the presentation still outranks it, which is why
+     * this sits after the `field.editor` branch and never before it.
+     *
+     * The inference is deliberately narrow, and stops exactly where the
+     * measurement level stops licensing it: a bounded RATIO quantity is a
+     * magnitude with a true zero and a full sweep, which is what a knob draws
+     * honestly; an INTERVAL one (a date, a temperature) has no true zero, so a
+     * sweep from `min` would draw a proportion that does not exist. Nominal and
+     * ordinal are not numbers a drag control should touch at all. Everything
+     * not covered falls through to text, which is where it was already. */
+    if (field.quantity.present && field.quantity.level == "ratio") {
+        if (field.quantity.bounded())
+            return widget_field_knob(ctx, node, field.key.c_str(), (float)field.quantity.min,
+                                     (float)field.quantity.max, /*integer=*/false,
+                                     (float)field.quantity.min, /*scale=*/1.0f, label_of(field));
+        return widget_field_number(ctx, node, field.key.c_str(), 0.05f,
+                                   field.quantity.has_min ? (float)field.quantity.min : 0.0f,
+                                   field.quantity.has_max ? (float)field.quantity.max : 0.0f,
+                                   label_of(field));
+    }
     return widget_field_text(ctx, node, field.key.c_str(), label_of(field));
 }
 

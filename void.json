@@ -12,11 +12,11 @@
     {
       "name": "voidcore",
       "kind": "runtime",
-      "version": ">=0.2.12",
+      "version": ">=0.2.14",
       "sibling": "../VoidCore",
       "cmake_var": "VOIDCORE_ROOT",
       "link": "shared",
-      "note": "the model, the dispatcher and the state document. Desktop links the sibling's prebuilt libvoidcore.dll; an Android or cross build compiles the pure-C sources into a static lib instead, since there are no prebuilts for that substrate."
+      "note": "the model, the dispatcher, the state document and — since 0.2.14, which the projection now reads — glyph kinds, quantity annotations and the presentations split. Desktop links the sibling's prebuilt libvoidcore.dll; an Android or cross build compiles the pure-C sources into a static lib instead, since there are no prebuilts for that substrate."
     },
     {
       "name": "voidallomone",
@@ -46,10 +46,13 @@
       "voidmaiz_imgui",
       "voidmaiz_headless",
       "voidmaiz_reduce",
-      "voidmaiz_allomone"
+      "voidmaiz_allomone",
+      "voidmaiz_net"
     ],
     "examples": {
       "gui": "maiz_canvas",
+    "touch": "maiz_mobile",
+    "network": "maiz_network",
       "cli": "maiz_headless",
       "describe": "maiz_headless --describe"
     },
@@ -62,6 +65,7 @@
   },
 
   "platforms": ["windows-x64", "android-arm64"],
+  "platforms_note": "`platforms` is a SHIPPING RECORD — what has been built, run and handed to somebody — not a claim about what compiles. Void Hormiga read it as the second thing on 2026-09-08 and had to ask, so the distinction is written down rather than implied. What compiles is broader and is now measured instead of asserted: .github/workflows/ci.yml builds the library, the tests and the GUI examples on windows-latest, macos-latest and ubuntu-latest and runs the headless suite on all three. A platform joins the array when a GUI binary has actually RUN there in front of a person, which no runner can witness — CI has no display. See okf/concepts/platforms.md.",
 
   "update": {
     "channel": "desktop",

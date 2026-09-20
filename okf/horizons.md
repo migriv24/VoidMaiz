@@ -258,3 +258,14 @@ now adopted:
    matters to a patch editor.
 6. **The log is the time axis** — never design a feature that couldn't be
    replayed.
+7. **Per-modality presentation is now a place, not a plan** (added 2026-09-03).
+   Void Core 0.2.14 split a glyph descriptor's schema from its `presentations`
+   map — one entry per modality, stored and never interpreted. `canvas` is
+   ours. The XR and NE members of the family, and any future web or audio
+   surface, get their own keys by the same convention instead of a second hint
+   dialect each, and discipline 1 above is what makes that work: a convention
+   written as if a second implementation will read it now has somewhere to
+   live. The corollary for Allmusely is sharper still — `glyph declare` makes
+   a node TYPE something a user can invent at runtime, undoably, in a document
+   that travels. That was the missing piece under an authoring tool whose file
+   IS a state document. See [rune kinds](/concepts/rune-kinds.md).

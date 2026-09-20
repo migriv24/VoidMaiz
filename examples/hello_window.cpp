@@ -5,6 +5,7 @@
  * button press is a dispatched command, with the log strip right below it.
  * The projection engine and the real node canvas come next. */
 #include "voidmaiz/embed.hpp"
+#include "voidmaiz/glhost.hpp"
 
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
@@ -20,8 +21,7 @@ int main() {
         std::fprintf(stderr, "glfw error %d: %s\n", code, desc);
     });
     if (!glfwInit()) return 1;
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+    const char* glsl = maiz::gl_context_hints(); // per-platform; macOS needs 3.2 core
     GLFWwindow* window = glfwCreateWindow(1024, 640, "Void Maiz — first window", nullptr, nullptr);
     if (!window) { glfwTerminate(); return 1; }
     glfwMakeContextCurrent(window);
@@ -31,7 +31,7 @@ int main() {
     ImGui::CreateContext();
     ImGui::StyleColorsDark();
     ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init("#version 130");
+    ImGui_ImplOpenGL3_Init(glsl);
 
     // The model — a live Void Core manager; the window owns no truth.
     maiz::Core core;

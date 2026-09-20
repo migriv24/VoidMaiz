@@ -35,8 +35,8 @@ independent:
 |---|---|---|
 | dimension | 2D | 3D |
 | space/metric | euclidean, **geographic** (lat/lon, host-projected) | hyperbolic (research) |
-| substrate | desktop window | mobile touch, HMD (OpenXR) |
-| input | mouse/keyboard | touch gestures, 6-DoF controllers + haptics, hands |
+| substrate | desktop window, **mobile touch** | HMD (OpenXR) |
+| input | mouse/keyboard, **touch gestures** | 6-DoF controllers + haptics, hands |
 | wire rendering | drawn (bezier) | hidden/adjacency (**blocks**: snap = link) |
 | motion | none (instant re-project) | animations/tweens (device-modular, not yet built) |
 
@@ -47,6 +47,14 @@ independent:
   touch drag compile to the *same* `link` command; total observability makes
   every frontend just another command emitter. This is the portability crown
   jewel.
+- **The touch recognizer** (`voidmaiz/touch.hpp`, 2026-09-13) — contacts in,
+  gestures out, no rendering types, and its thresholds in millimetres rather
+  than pixels. It belongs on this list because it is the proof of the axis:
+  a pinch and a mouse wheel compile the same `config set view.camera`, and a
+  long press synthesizes a right-click so the canvas never learns a finger
+  exists. **The modality is absorbed at the boundary.** See
+  [touch](/concepts/touch.md), which is where this page's "touch is an input
+  modality, not a geometry" stopped being a slogan and became a state machine.
 - **The hints conventions** (ports, shape, color, enter) — semantic
   declarations ("the principal is the apex"), not pixels.
 - **View-state-as-content** — `pos` is an opaque array in content; `[x,y,z]`
@@ -120,6 +128,14 @@ out of VLS (own repo, own OKF, message files between agents):
    from C11 source into the .so. v1 gaps, deliberate: no soft keyboard (Save
    As pre-fills a timestamp name; the command bar is desktop-only until an
    IME shim lands), no long-press context menu.
+
+   **Both gaps moved on 2026-09-13.** The long-press menu is **built and in the
+   library** — it synthesizes a right-click, so it is the desktop menu rather
+   than a second one — and the soft keyboard is now **Q29**, a ground-rule
+   question rather than a to-do: the platform IME means JNI into Android's Java
+   runtime, which costs this entry's own zero-Java claim. The APK's hand-rolled
+   touch layer is superseded by `voidmaiz/touch.hpp`; its shell shrinks to the
+   six-line hookup in `examples/mobile_window.cpp`.
 4. **InteractionCombinators VR (Quest 3)**: 3D · euclidean · HMD · 6-DoF +
    haptics · non-traditional connection gestures. The node-geometry concept
    extends to solids: **a cone is the 3D triangle** (apex = principal, base
@@ -185,7 +201,9 @@ out of VLS (own repo, own OKF, message files between agents):
 # What we do NOW (cheap) vs LATER (pulled by a client)
 
 Now: keep the rule (no new dimension/device types above the view), write
-positions as arrays, name geometry semantically. The animation layer landed
+positions as arrays, name geometry semantically. **The mobile substrate stopped
+being "later" on 2026-09-13** — recognizer, chrome kit and reference host, ahead
+of Void Hormiga going mobile ([touch](/concepts/touch.md)). The animation layer landed
 2026-07-14 (`CanvasFx`, host-clock-driven — already device-modular: the APK
 plays the same choreography untouched), and the APK itself shipped the same
 day (see the target list). Later, in order of pull: Node Blocks (desktop,

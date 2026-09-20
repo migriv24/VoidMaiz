@@ -69,3 +69,41 @@ bool allo_matches(const Rule& rule, const Subject& subject,
 }
 
 } // namespace maiz
+
+// ── networking (okf/concepts/networking.md) ──────────────────────────────────
+
+namespace maiz {
+
+namespace {
+/* The rune id a subject stands for. A host that keyed its Subjects on the rune
+ * NAME gets resolved through the scene; otherwise the subject id is the rune id. */
+std::string rune_id_of(const Subject& subject, const Scene* scene) {
+    if (scene) {
+        if (find_by_id(*scene, subject.id)) return subject.id;
+        if (const SceneNode* n = scene->find(subject.id)) return n->id;
+    }
+    return subject.id;
+}
+} // namespace
+
+void register_presence_predicates(allomone::PredicateRegistry& preds, const Roster& roster,
+                                  const Scene* scene) {
+    preds.add("present", [&roster, scene](const Subject& subject, std::string_view arg) {
+        for (const Peer* p : roster.on_rune(rune_id_of(subject, scene)))
+            if (arg.empty() || p->state.who.id == arg || p->state.who.name == arg) return true;
+        return false;
+    });
+}
+
+ShareFilter share_by_annotation(const allomone::Merged& merged, std::string property) {
+    // copied: a filter the sync seam holds must not dangle into a dead Merged
+    return [merged, property = std::move(property)](const SceneNode& n) {
+        const allomone::MergedCell* c = merged.find(n.id, property);
+        if (!c) c = merged.find(n.name, property);
+        if (!c) return true;                 // no rule spoke
+        if (c->conflicted) return false;     // disagreement never means "send it"
+        return !(c->value == "false" || c->value == "0");
+    };
+}
+
+} // namespace maiz

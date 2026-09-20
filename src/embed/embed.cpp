@@ -162,6 +162,7 @@ Transcript split_transcript(std::string_view src) {
 struct Core::Callbacks {
     LogSink log;
     EffectHandler effect;
+    std::vector<std::string> glyphs; // registered descriptors, replayed by replace_state
 
     static void log_thunk(const char* level, const char* op, const char* msg, void* user) {
         auto* cb = static_cast<Callbacks*>(user);
@@ -223,7 +224,22 @@ std::string Core::export_state() const {
 
 bool Core::register_glyph(std::string_view glyph_json) {
     std::string owned(glyph_json);
-    return vc_register_glyph(m_, owned.c_str()) == 1;
+    bool ok = vc_register_glyph(m_, owned.c_str()) == 1;
+    if (ok) cb_->glyphs.push_back(std::move(owned));
+    return ok;
+}
+
+bool Core::replace_state(std::string_view state_json) {
+    std::string owned(state_json);
+    VC_Manager* fresh = vc_create(owned.empty() ? nullptr : owned.c_str());
+    if (!fresh) return false;
+    // the Callbacks object keeps its address, so the same user pointer serves
+    vc_set_log_sink(fresh, cb_->log ? &Callbacks::log_thunk : nullptr, cb_.get());
+    vc_set_effect_handler(fresh, cb_->effect ? &Callbacks::effect_thunk : nullptr, cb_.get());
+    for (const auto& g : cb_->glyphs) vc_register_glyph(fresh, g.c_str());
+    if (m_) vc_destroy(m_);
+    m_ = fresh;
+    return true;
 }
 
 void Core::set_log_sink(LogSink sink) {

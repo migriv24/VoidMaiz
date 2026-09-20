@@ -79,6 +79,16 @@ int main() {
     Scene app = project_scene(core, {"app"});
     std::vector<Subject> subjects;
     for (const SceneNode& n : app.nodes)
+                /* `.kind = n.glyph` — THE GLYPH NAME, and it must stay that.
+         * Allomone's `kind` is whatever the host puts on a Subject, and every
+         * script asks about the domain type (`when kind "slider"`, and `glyph
+         * "x"` is an exact alias for `kind "x"`). Since Void Core 0.2.14 a
+         * SceneNode also has `.kind` — entity/act/measure — and mapping THAT
+         * here would stamp "entity" on nearly every subject and silently stop
+         * every `kind "…"` rule from matching. It does not error: a rule that
+         * stops matching produces no annotation to notice. Carry the rune kind
+         * as `runekind` (a host predicate or a `runekind:measure` tag) if a
+         * script ever needs it. (Void Allomone, 2026-09-04.) */
         subjects.push_back({.id = n.name, .kind = n.glyph, .name = n.name,
                             .mantle = "app", .tags = n.tags});
     REQUIRE(subjects.size() == 3);
