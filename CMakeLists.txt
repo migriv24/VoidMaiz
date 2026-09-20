@@ -55,8 +55,15 @@ if(ANDROID)
   target_compile_definitions(voidcore_static PRIVATE CJSON_HIDE_SYMBOLS)
   set(VOIDCORE_LIBRARY voidcore_static)
 else()
+  # A MULTI-CONFIG GENERATOR PUTS IT ONE FOLDER DEEPER (2026-09-20). Visual
+  # Studio builds into build/Release and build/bin/Release, so a host configured
+  # with the default Windows generator was told to "build the core first" when it
+  # already had. Void Hormiga's Windows CI had been red on this since 0.1.2, and
+  # it looked like a missing step rather than a search path.
   find_library(VOIDCORE_LIBRARY NAMES voidcore libvoidcore
     HINTS "${VOIDCORE_ROOT}/build" "${VOIDCORE_ROOT}/build/bin"
+          "${VOIDCORE_ROOT}/build/Release" "${VOIDCORE_ROOT}/build/bin/Release"
+          "${VOIDCORE_ROOT}/build/Debug" "${VOIDCORE_ROOT}/build/bin/Debug"
     NO_DEFAULT_PATH)
   if(NOT VOIDCORE_LIBRARY)
     message(FATAL_ERROR "No built voidcore library under ${VOIDCORE_ROOT}/build — build the core first")
@@ -64,6 +71,8 @@ else()
 
   find_file(VOIDCORE_DLL NAMES libvoidcore.dll voidcore.dll
     HINTS "${VOIDCORE_ROOT}/build/bin" "${VOIDCORE_ROOT}/build"
+          "${VOIDCORE_ROOT}/build/bin/Release" "${VOIDCORE_ROOT}/build/Release"
+          "${VOIDCORE_ROOT}/build/bin/Debug" "${VOIDCORE_ROOT}/build/Debug"
     NO_DEFAULT_PATH)
 endif()
 
