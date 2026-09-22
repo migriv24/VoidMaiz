@@ -149,6 +149,27 @@ agent `+red` on one and `+blue` on the other at the same time.
 one plays its rewrite animation on the other; the two tags make purple on both.
 *Tests:* sync over the real LAN, remote playback, pigments merging.
 
+**L5 ★ The phone sleeps.** While joined, turn the phone's screen off for a
+minute, then turn it back on.
+*Watch:* the PC says the phone "went quiet" within about 12 seconds (it no
+longer claims to be connected). When the phone wakes it rejoins **by itself**,
+and the PC does **not** ask you to allow it again. Anything made while it slept
+arrives.
+*Tests:* the idle timeout, the retry loop, and letting a known device back in.
+
+**L6 ★ Do the two screens really agree?** Wire some ports on one device
+(including a constructor wired to itself, the case that looked wrong in 0.4.0).
+Open **LAN** on both and compare the line "this device: N agents, N wires, N
+pairs".
+*Watch:* the numbers should match. If they do not, press **Resync now** on
+either device and watch them again; then tell Claude both sets of numbers and
+whether Resync fixed it. That is the measurement that was missing when this went
+wrong the first time.
+
+**L7 Names.** On the host, open **LAN** and type a net name (desktop). On the
+joiner's list the net appears under that name. In **Settings > Profile**, change
+your name and colour: the other device shows the new name when you reconnect.
+
 **L4 Deny, and leaving.** A third device (or the phone again) asks to join and the
 host presses **Deny**: the joiner is told "the host said no" and receives nothing.
 Press **Leave** on the phone: the PC's count drops, and the phone keeps its copy.

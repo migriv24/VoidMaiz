@@ -9,6 +9,8 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <fstream>
+#include <sstream>
 #include <initializer_list>
 
 namespace maiz {
@@ -54,6 +56,72 @@ bool parse_gesture(std::string_view text, CanvasGesture& out) {
             return true;
         }
     return false;
+}
+
+// ── the profile, per machine ─────────────────────────────────────────────────
+
+namespace {
+std::filesystem::path profile_file(const std::filesystem::path& dir) { return dir / "profile.json"; }
+} // namespace
+
+Profile load_profile(const std::filesystem::path& dir) {
+    Profile p;
+    std::ifstream in(profile_file(dir), std::ios::binary);
+    std::ostringstream ss;
+    ss << in.rdbuf();
+    std::string text = ss.str();
+    cJSON* root = cJSON_ParseWithLength(text.data(), text.size());
+    if (cJSON_IsObject(root)) {
+        if (const cJSON* n = cJSON_GetObjectItemCaseSensitive(root, "name"); cJSON_IsString(n))
+            p.name = n->valuestring;
+        if (const cJSON* c = cJSON_GetObjectItemCaseSensitive(root, "rgb"); cJSON_IsString(c) &&
+            std::string_view(c->valuestring).size() == 7)
+            p.rgb = (unsigned)std::strtoul(c->valuestring + 1, nullptr, 16);
+        if (const cJSON* i = cJSON_GetObjectItemCaseSensitive(root, "id"); cJSON_IsString(i))
+            p.id = i->valuestring;
+    }
+    cJSON_Delete(root);
+    if (p.name.empty()) { // first run: the machine's name, a colour of its own
+        p.name = default_device_name();
+        p.rgb = suggested_colour(p.name);
+    }
+    return p;
+}
+
+bool save_profile(const std::filesystem::path& dir, const Profile& p) {
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+    cJSON* root = cJSON_CreateObject();
+    cJSON_AddStringToObject(root, "name", p.name.c_str());
+    char rgb[8];
+    std::snprintf(rgb, sizeof rgb, "#%06x", p.rgb & 0xFFFFFFu);
+    cJSON_AddStringToObject(root, "rgb", rgb);
+    if (!p.id.empty()) cJSON_AddStringToObject(root, "id", p.id.c_str());
+    char* text = cJSON_Print(root);
+    std::filesystem::path tmp = profile_file(dir);
+    tmp += ".tmp";
+    {
+        std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
+        out << (text ? text : "{}");
+    }
+    cJSON_free(text);
+    cJSON_Delete(root);
+    std::filesystem::rename(tmp, profile_file(dir), ec); // atomic
+    return !ec;
+}
+
+std::string default_device_name() {
+    for (const char* var : {"COMPUTERNAME", "HOSTNAME", "HOST"})
+        if (const char* v = std::getenv(var); v && *v) return v;
+    return "This device";
+}
+
+unsigned suggested_colour(std::string_view seed) {
+    // no red, yellow or blue: a peer's mark must not read as a node's pigment
+    static const unsigned palette[] = {0x2f9e8f, 0xc2548a, 0x6f5bd6, 0x2b8fd9, 0x8a9b2e, 0xd9822b};
+    std::size_t h = 1469598103934665603ull;
+    for (char ch : seed) h = (h ^ (unsigned char)ch) * 1099511628211ull;
+    return palette[h % 6];
 }
 
 // ── surfaces ─────────────────────────────────────────────────────────────────

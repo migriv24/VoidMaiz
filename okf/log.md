@@ -6915,3 +6915,54 @@ reading the bytes. Bytes that arrive with a close now count.
 
 Suite: **20/20 gating** (new `lanlink_smoke`), duo selftest 17/17,
 `reduce_conformance` unchanged at 17/25.
+
+## 2026-09-22 (second pass): The author tested on two devices. Three fixes, and one thing not reproduced
+
+*"it works sort of"* — discovery, joining and positions all behaved. Three
+reports, and the wiring one is the interesting failure.
+
+**1. "it disconnects but still says its connected".** A sleeping phone's socket
+neither delivers nor fails, so nothing detected it. Fixed at two levels: the sync
+session now speaks every 4 s (`keepalive`), and a link with **12 s of silence is
+declared dead** (`LanOptions::idle_ms`). A joiner then **reconnects by itself**
+with a 2 s -> 8 s backoff, and a host **lets a device it already allowed straight
+back in** rather than asking a person twice. Pinned in `lanlink_smoke`: a phone
+that stops running entirely is noticed, the host keeps working, and the phone
+rejoins with no second knock and receives what it missed.
+
+**2. "the actual port wirings of the nodes are not [shared]", including vicious
+cycles.** **Not reproduced**, and that is stated rather than papered over:
+- `net_smoke` now wires the author's shapes — an ordinary wire, a constructor
+  wired to ITSELF, and a vicious circle — and compares what the two devices
+  DRAW: identical, including wiring added after the join and wiring made by the
+  joiner.
+- Two real Interaction Combinators processes over real sockets, wiring the same
+  shapes from either side: identical.
+The best remaining explanation is (1): the phone slept, its link was dead but
+looked alive, and the wiring made meanwhile never arrived — which also fits
+*"I interact some nodes, and then it kinda updates"*. So the fix for (1) may be
+the fix for this. To make the next test conclusive rather than impressionistic,
+the LAN panel now shows **what this device actually holds** (agents, wires,
+pairs, open questions) and offers **Resync now** (`Network::resync`: every link
+starts a new session, so the whole document is exchanged again). Tests L6.
+
+**3. Profiles, and names for nets.** The author: *"a very basic profile thing …
+if we think of this like a server, then technically the server is a mantle
+itself."* So:
+- `maiz::load_profile` / `save_profile` (per machine, beside the update answers,
+  never in the document: a profile that rode the document would rename its owner
+  on another device). A name and a colour, and `suggested_colour` picks from a
+  palette with no pigment colours in it.
+- IC: Settings > Profile edits both; the log's actor and the network identity
+  follow it.
+- **A net is a mantle, so naming the net renames the mantle.** The host names it
+  (`mantle rename`), the name travels in the beacon, and the join list shows
+  "Join sapo-net (SAPO)" instead of an address. Sharing the starter net renames
+  it from `lafont` to `<name>-net`.
+- A joiner now **adopts whatever mantle arrives** instead of assuming `lafont`.
+
+Also: CMake re-runs when `VERSION` changes (a dev build was showing 0.3.0 while
+the file said 0.4.0), and the health lines wrap.
+
+Shipped as Interaction Combinators **0.4.1**. Suite: 20/20 gating, duo selftest
+17/17, two-process LAN run identical on both sides.

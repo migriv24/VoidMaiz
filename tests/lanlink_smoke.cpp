@@ -163,6 +163,64 @@ int main() {
     CHECK(!stranger.has_rune("shared-note"));
     CHECK(host.lan.connected() == 1); // Bo is still there
 
+    // ── a device that goes quiet is noticed, and comes back without knocking ──
+    // The author, 2026-09-22: "i turn off my phone frequently ... it disconnects
+    // but still says its connected". A sleeping phone's socket neither delivers
+    // nor fails, so silence is the only signal, and a device already allowed must
+    // not have to be allowed again.
+    {
+        Device h2("Ana2", "replica-lan-ana2-00000001", true);
+        Device p2("Phone", "replica-lan-phone-0000002", false);
+        h2.core.dispatch("rune new card before-the-nap");
+
+        LanOptions ho2;
+        ho2.app = "lanlink-smoke2";
+        ho2.id = "replica-lan-ana2-00000001";
+        ho2.name = "Ana2";
+        ho2.host = true;
+        ho2.beacon_port = 47861;
+        ho2.tcp_port = 0;
+        ho2.idle_ms = 1200; // the test's patience; the app ships 12 s
+        CHECK(h2.lan.start(ho2, &err));
+
+        LanOptions po2 = ho2;
+        po2.id = "replica-lan-phone-0000002";
+        po2.name = "Phone";
+        po2.host = false;
+        po2.beacon_port = 47862;
+        CHECK(p2.lan.start(po2, &err));
+        CHECK(p2.lan.join(loopback, h2.lan.tcp_port(), &err));
+        CHECK(run_until({&h2, &p2}, [&] { return !h2.lan.requests().empty(); }, 3000));
+        auto rq = h2.lan.requests();
+        h2.lan.allow(rq[0].token);
+        CHECK(run_until({&h2, &p2}, [&] { return p2.has_rune("before-the-nap"); }, 8000));
+        CHECK(h2.lan.already_allowed(po2.id));
+
+        // the phone sleeps: it stops running entirely, and its socket says nothing
+        long long asleep_until = now_ms() + 2500;
+        while (now_ms() < asleep_until) {
+            h2.frame(); // only the host is awake
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+        CHECK(h2.lan.connected() == 0); // silence is how a dead link shows
+        bool said = false;
+        for (auto& e : h2.events)
+            if (e.find("went quiet") != std::string::npos) said = true;
+        CHECK(said);
+
+        // meanwhile the host keeps working
+        h2.core.dispatch("rune new card made-while-away");
+
+        // the phone wakes and reconnects (what the app's retry loop does), and is
+        // let back in WITHOUT a person answering again
+        p2.lan.stop();
+        CHECK(p2.lan.start(po2, &err));
+        CHECK(p2.lan.join(loopback, h2.lan.tcp_port(), &err));
+        CHECK(run_until({&h2, &p2}, [&] { return h2.lan.connected() == 1; }, 5000));
+        CHECK(h2.lan.requests().empty()); // nobody was asked twice
+        CHECK(run_until({&h2, &p2}, [&] { return p2.has_rune("made-while-away"); }, 8000));
+    }
+
     // ── leaving is noticed ────────────────────────────────────────────────────
     joiner.lan.stop();
     bool gone = run_until({&host}, [&] { return host.lan.connected() == 0; }, 3000);

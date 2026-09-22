@@ -68,6 +68,7 @@ struct LanSession::Conn {
     std::string peer_id, peer_name;
     int token = 0;
     bool joiner = false;
+    long long last_rx = 0; // when bytes last arrived: silence is how a dead link shows
     voidpalabra::sync::StreamReader reader;
     std::string link() const { return "lan:" + peer_id; }
 };
@@ -111,6 +112,7 @@ std::string LanSession::beacon_json(bool reply) const {
     cJSON_AddStringToObject(o, "rgb", hex_of(opt_.rgb).c_str());
     cJSON_AddBoolToObject(o, "host", opt_.host);
     if (opt_.host) cJSON_AddNumberToObject(o, "port", listener_.port());
+    if (!opt_.net.empty()) cJSON_AddStringToObject(o, "net", opt_.net.c_str());
     cJSON_AddBoolToObject(o, "reply", reply);
     char* t = cJSON_PrintUnformatted(o);
     std::string s = t ? t : "{}";
@@ -132,6 +134,7 @@ void LanSession::on_beacon(const lan::Udp::Datagram& d, long long now) {
         LanPeer& p = peers_[id];
         p.id = id;
         p.name = str_of(o, "name").substr(0, 64);
+        p.net = str_of(o, "net").substr(0, 64);
         p.rgb = rgb_of(str_of(o, "rgb"));
         p.host = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(o, "host"));
         const cJSON* port = cJSON_GetObjectItemCaseSensitive(o, "port");
@@ -165,9 +168,14 @@ std::vector<LanRequest> LanSession::requests() const {
     return out;
 }
 
+bool LanSession::already_allowed(const std::string& peer_id) const {
+    return allowed_.count(peer_id) > 0;
+}
+
 void LanSession::allow(int token) {
     for (auto& c : conns_)
         if (c->phase == Conn::Phase::Pending && c->token == token) {
+            allowed_.insert(c->peer_id); // let this device back in after a nap
             c->tcp->write(std::string(kAllow, 4));
             c->phase = Conn::Phase::Linked;
             if (!c->buf.empty()) { // a joiner may already have sent frames: keep them
@@ -227,7 +235,7 @@ int LanSession::connected() const {
     return n;
 }
 
-void LanSession::pump_conn(Conn& c, long long) {
+void LanSession::pump_conn(Conn& c, long long now) {
     bool was_linked = c.phase == Conn::Phase::Linked;
     if (!c.tcp->pump()) {
         /* Bytes that arrived WITH the close still count. A host's Deny is written
@@ -267,6 +275,7 @@ void LanSession::pump_conn(Conn& c, long long) {
         c.phase = Conn::Phase::Hello;
     }
     std::string in = c.tcp->take_read();
+    if (!in.empty()) c.last_rx = now;
     if (in.empty() && c.phase != Conn::Phase::Linked) return;
     switch (c.phase) {
     case Conn::Phase::Connecting: break;
@@ -319,6 +328,16 @@ void LanSession::pump_conn(Conn& c, long long) {
             c.tcp->close();
             return;
         }
+        if (allowed_.count(c.peer_id)) { // already let in once: no second knock
+            c.tcp->write(std::string(kAllow, 4));
+            c.phase = Conn::Phase::Linked;
+            if (!c.buf.empty()) {
+                c.reader.feed(c.buf);
+                c.buf.clear();
+            }
+            events_.push_back({LanEvent::Kind::Connected, c.link(), c.peer_name + " is back"});
+            break;
+        }
         c.token = next_token_++;
         c.phase = Conn::Phase::Pending; // a person answers (allow / deny)
         break;
@@ -359,7 +378,18 @@ void LanSession::poll(long long now) {
             c->tcp = std::move(t);
             conns_.push_back(std::move(c));
         }
-    for (auto& c : conns_) pump_conn(*c, now);
+    for (auto& c : conns_) {
+        if (c->last_rx == 0) c->last_rx = now; // born now: the clock starts here
+        pump_conn(*c, now);
+        // a link with nothing on it is dead, whatever the socket says: the sync
+        // session speaks every few seconds, so silence means gone
+        if (c->phase == Conn::Phase::Linked && opt_.idle_ms > 0 && now - c->last_rx > opt_.idle_ms) {
+            events_.push_back({LanEvent::Kind::Disconnected, c->link(),
+                               c->peer_name + " went quiet (no data for " +
+                                   std::to_string(opt_.idle_ms / 1000) + "s)"});
+            c->tcp->close();
+        }
+    }
     conns_.erase(std::remove_if(conns_.begin(), conns_.end(), [](const std::unique_ptr<Conn>& c) { return c->tcp->closed(); }),
                  conns_.end());
 }

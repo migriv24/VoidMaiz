@@ -328,6 +328,16 @@ void Network::tick(NetMillis now, const std::vector<std::string>& selection_ids,
     }
 }
 
+void Network::resync(NetMillis now) {
+    observe_local(true); // whatever the Core holds now IS what we have
+    std::vector<std::string> names;
+    for (const auto& [link, l] : links_) names.push_back(link);
+    links_.clear(); // drop the sessions; their peers see a restart
+    for (const auto& link : names) connect(link, now);
+    note("info", "", "resynchronised: " + std::to_string(names.size()) +
+                         " link(s) started a new session and the whole document again");
+}
+
 void Network::fetch(const std::string& address, NetMillis now) {
     for (auto& [link, l] : links_) handle(link, l.session->fetch(address, now), now);
 }

@@ -400,6 +400,75 @@ int main() {
         }
     }
 
+    // ── the author's report (2026-09-22): wires arrive late, or not at all ───
+    // "on one device i can be connecting ports together, and the other device
+    // will just show EMPTY NODES ... this might be because i was wiring things
+    // with a vicious cycle." Positions synced; the wiring did not. Every wiring
+    // shape the author used, compared as the two devices DRAW it.
+    {
+        Device a("ana", "replica-ana-0000000081"), b("bo", "replica-bo-00000000082", false, false);
+        const char* kGamma = R"({"glyph":"gamma","label":"gamma","fields":[],"hints":{"ports":[{"name":"prin","principal":true},{"name":"a"},{"name":"b"}]}})";
+        const char* kWire = R"({"glyph":"wire","label":"wire","fields":[]})";
+        for (Device* d : {&a, &b}) {
+            d->core.register_glyph(kGamma);
+            d->core.register_glyph(kWire);
+        }
+        WireEncoding enc;
+        NetMillis now = 1000;
+        Wire wire;
+        a.net->connect("bo", now);
+        b.net->connect("ana", now);
+        unsigned long k = 1;
+        auto fresh = [&] { return fresh_wire_name("ana", k++); };
+
+        for (const char* n : {"c1", "c2", "c3"}) a.core.dispatch(std::string("rune new gamma ") + n);
+        // 1. an ordinary wire
+        a.core.dispatch(compile_wire(enc, fresh(), {"c1", 1}, {"c2", 1}));
+        // 2. a SELF-LOOP: a constructor wired to itself (the author's case)
+        a.core.dispatch(compile_wire(enc, fresh(), {"c3", 1}, {"c3", 2}));
+        // 3. a vicious circle: principal -> aux around a ring
+        a.core.dispatch(compile_wire(enc, fresh(), {"c1", 0}, {"c2", 2}));
+        a.core.dispatch(compile_wire(enc, fresh(), {"c2", 0}, {"c3", 0}));
+        pump({&a, &b}, now, 80, wire);
+        b.adopt();
+
+        auto drawn = [&](Device& d) {
+            Scene s = collapse_wires(project_scene(d.core), enc);
+            std::vector<std::string> w;
+            for (const auto& x : s.wires) {
+                std::string p = x.from + "." + std::to_string(x.from_port);
+                std::string q = x.to + "." + std::to_string(x.to_port);
+                if (q < p) std::swap(p, q);
+                w.push_back(p + "-" + q + (x.contested ? "!" : ""));
+            }
+            std::sort(w.begin(), w.end());
+            return w;
+        };
+        std::vector<std::string> host = drawn(a), joiner = drawn(b);
+        CHECK(host.size() == 4);
+        CHECK(joiner == host); // the whole point: the same net on both screens
+        if (joiner != host) {
+            std::cerr << "  host  :";
+            for (auto& x : host) std::cerr << " " << x;
+            std::cerr << "\n  joiner:";
+            for (auto& x : joiner) std::cerr << " " << x;
+            std::cerr << "\n";
+        }
+        CHECK(b.net->anomalies().empty());
+        CHECK(fingerprint(a.core) == fingerprint(b.core));
+
+        // and wiring made AFTER the join arrives without another edit to nudge it
+        a.core.dispatch(compile_wire(enc, fresh(), {"c1", 2}, {"c3", 0}));
+        pump({&a, &b}, now, 60, wire);
+        CHECK(drawn(b).size() == drawn(a).size());
+        CHECK(drawn(b) == drawn(a));
+
+        // the joiner wires something, and the host sees it
+        b.core.dispatch(compile_wire(enc, fresh_wire_name("bo", 1), {"c2", 1}, {"c3", 1}));
+        pump({&a, &b}, now, 60, wire);
+        CHECK(drawn(a) == drawn(b));
+    }
+
     // ── …and the same case with PLAIN edges loses the wire (the contrast) ────
     // Kept so the test above cannot pass vacuously: this is the failure it fixes.
     {

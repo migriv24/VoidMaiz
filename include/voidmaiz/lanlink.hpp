@@ -30,6 +30,7 @@
 #include "voidmaiz/lan.hpp"
 
 #include <map>
+#include <set>
 #include <memory>
 #include <string>
 #include <vector>
@@ -42,12 +43,19 @@ struct LanOptions {
     std::string name;        // what the other screen shows
     unsigned rgb = 0x4f86d9;
     bool host = false;       // hosting: announce, and accept joiners
+    std::string net;         // what this net is CALLED (the mantle's name), shown to joiners
     std::uint16_t beacon_port = 47811;
     std::uint16_t tcp_port = 47812; // hosting; 0 = any free port
+    /* A link with no bytes for this long is dead, whatever TCP believes. A
+     * phone that sleeps, a Wi-Fi handover and a laptop lid all look the same to
+     * a socket: nothing arrives and nothing fails. The sync session speaks at
+     * least every `keepalive` (set it well under this), so silence is real.
+     * The author, 2026-09-22: "it disconnects but still says its connected". */
+    long long idle_ms = 12000;
 };
 
 struct LanPeer {
-    std::string id, name;
+    std::string id, name, net; // `net`: what that device calls the net it shares
     unsigned rgb = 0;
     bool host = false;
     lan::Ipv4 addr;
@@ -81,6 +89,12 @@ class LanSession {
     bool start(const LanOptions& options, std::string* error = nullptr);
     void stop();
     bool running() const { return running_; }
+    /* What this device calls its net; a host may rename it while sharing. */
+    void set_net(const std::string& net) { opt_.net = net; }
+    const std::string& net_name() const { return opt_.net; }
+    /* A device this host has already let in: it is let back in without asking
+     * again, so a phone that slept does not knock twice. */
+    bool already_allowed(const std::string& peer_id) const;
     bool hosting() const { return opt_.host; }
     std::uint16_t tcp_port() const;
 
@@ -114,6 +128,7 @@ class LanSession {
     std::vector<std::unique_ptr<Conn>> conns_;
     std::map<std::string, LanPeer> peers_; // by id
     std::map<std::uint32_t, long long> replied_; // unicast replies sent, by address
+    std::set<std::string> allowed_;              // peers a person let in, this session
     long long last_beacon_ = -1;
     int next_token_ = 1;
     std::vector<LanFrame> frames_;

@@ -44,6 +44,7 @@
 #include "voidmaiz/scene.hpp"
 
 #include <cstddef>
+#include <filesystem>
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -82,6 +83,23 @@ struct Profile {
     unsigned rgb = 0x4f86d9; // 0xRRGGBB — the peer's colour on every mark
     std::string avatar;     // an asset reference the application resolves; "" = initials
 };
+
+/* ── the profile, remembered per machine ─────────────────────────────────────
+ * Who this person is on every net they join: a name and a colour. PER MACHINE,
+ * beside the update preferences and never in the document — a profile that rode
+ * the document would travel to another device on the next merge and rename its
+ * owner. The author asked for "a very basic profile thing" (2026-09-22), and
+ * basic is the whole design: two fields, a file, no account. */
+Profile load_profile(const std::filesystem::path& dir);
+bool save_profile(const std::filesystem::path& dir, const Profile& profile);
+
+/* This machine's name ("SAPO"), or "This device" when the platform has none.
+ * A default, not a decision: a person renames it in Settings. */
+std::string default_device_name();
+
+/* A colour from a palette chosen so a peer's mark is never mistaken for one of
+ * a node's own pigments (no red, yellow or blue). Stable for the same seed. */
+unsigned suggested_colour(std::string_view seed);
 
 /* ── what is on screen: the surface registry ──────────────────────────────────
  * IMMEDIATE MODE, deliberately. Views declare their surfaces every frame

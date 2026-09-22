@@ -186,6 +186,13 @@ class Network {
     void tick(NetMillis now, const std::vector<std::string>& selection_ids,
               const Surfaces& surfaces, const CollabOut& collab);
 
+    /* Start every link's session again, from this device's whole state. The
+     * recovery a person reaches for when two screens disagree and nobody knows
+     * why: a new session nonce makes each peer forget what it believed was
+     * acknowledged, so the whole document is exchanged again. Cheap (one
+     * document), and it cannot lose anything: the merge is the same merge. */
+    void resync(NetMillis now);
+
     /* Cautious file transfer: the user chose to download this one. */
     void fetch(const std::string& address, NetMillis now);
 
