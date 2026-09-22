@@ -6762,3 +6762,35 @@ bench, without the N1 drawing.
 
 Suite: Void Maiz **18/18 gating**, `reduce_conformance` unchanged at 17/25; duo
 selftest 17/17.
+
+## 2026-09-21 (third pass): Interaction Combinators 0.2.0 is released, for Windows and Android
+
+The author: *"let's just continue development on the interaction combinators
+application. releasing for apk and desktop devices."* IC had never been under
+version control. It is now **public at https://github.com/migriv24/InteractionCombinators**,
+with release **v0.2.0**: a Windows x64 zip (the app, the duo bench, and the four
+DLLs they need) and the Android APK (versionName 0.2.0, versionCode 200, the four
+LAN permissions in the package).
+
+- One `VERSION` file feeds both builds and the window title. The APK's
+  versionCode is derived from it, so it only increases.
+- `tools/package_release.ps1` builds an optimized desktop build, stages it,
+  **runs the duo selftest from the staged folder with no toolchain on PATH** (to
+  prove the folder is self-contained), zips it, and builds the APK. The released
+  zip was then downloaded from GitHub, unzipped fresh and self-tested again: green.
+- The signing key, APKs, build folders, layout files and inter-agent messages
+  are ignored. The pre-commit dry run staged exactly the 18 source files.
+
+**A test bug the release pipeline caught.** The duo selftest waited a fixed number
+of *frames* for a partition to heal. It passed in the unoptimized dev build and
+failed in the optimized release build, whose hidden windows run so much faster
+that 240 frames were shorter than Palabra's 2 s resend. It now waits on time.
+The sync was never wrong; the test assumed frames were time.
+
+Also pushed the same day: Void Maiz `1f0bcb1` (the collaborative canvas work) and
+Void Palabra's local commit `17293db` (unchanged), which Void Maiz's new code
+depends on, so a fresh clone builds.
+
+Known limits, stated in the release notes: the APK is solo (no LAN transport,
+Q36), collaboration shows changes but not yet cursors or in-flight gestures (N1),
+and there is no packaged Linux or macOS build.
