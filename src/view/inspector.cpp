@@ -3,6 +3,8 @@
  * each field's widget, and the inspector is just another registry client —
  * a host-registered editor shows up here without inspector changes. */
 #include "voidmaiz/inspector.hpp"
+
+#include "voidmaiz/tags.hpp" // suggest_tags: the chips under the add box
 #include "voidmaiz/gesture.hpp"
 
 #include <cstdio>
@@ -57,6 +59,46 @@ CanvasIO draw_inspector(const Scene& scene, EditorState& ed, const WidgetRegistr
         out.commands.push_back(compile_tag(node->name, ed.tag_add_buf, true));
         ed.tag_add_buf[0] = '\0';
         ImGui::SetKeyboardFocusHere(-1); // stay for the next tag
+    }
+
+    /* Suggestions (voidmaiz/tags.hpp): what this node's same-glyph peers are
+     * tagged, that it is not. One click adds one — which matters most on a
+     * phone, where the alternative is typing it. Outlined rather than filled:
+     * a suggestion is not a tag until it is chosen. Recomputed only when the
+     * node, its tags or the mode change. */
+    {
+        std::string key = node->name + "|" + std::to_string((int)ed.tag_suggest_mode);
+        for (const auto& t : node->tags) key += "|" + t;
+        if (key != ed.tag_suggest_key) {
+            ed.tag_suggest_key = key;
+            Suggest opt;
+            opt.mode = ed.tag_suggest_mode;
+            opt.limit = 5;
+            ed.tag_suggest = suggest_tags(scene, *node, opt);
+        }
+        if (!ed.tag_suggest.empty()) {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+            ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.18f, 0.50f, 0.26f, 1.0f));
+            ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
+            float sw = 0.0f;
+            for (const auto& t : ed.tag_suggest) {
+                std::string chip = "+ " + t;
+                float w = ImGui::CalcTextSize(chip.c_str()).x +
+                          ImGui::GetStyle().FramePadding.x * 2;
+                if (sw > 0 && sw + w > avail_w) sw = 0;
+                else if (sw > 0) ImGui::SameLine();
+                ImGui::PushID(("sg-" + t).c_str());
+                if (ImGui::SmallButton(chip.c_str()))
+                    out.commands.push_back(compile_tag(node->name, t, true));
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("other %s runes carry @%s", node->glyph.c_str(),
+                                      t.c_str());
+                ImGui::PopID();
+                sw += w + ImGui::GetStyle().ItemSpacing.x;
+            }
+            ImGui::PopStyleVar();
+            ImGui::PopStyleColor(2);
+        }
     }
     ImGui::Separator();
 

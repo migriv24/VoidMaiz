@@ -9,6 +9,7 @@
  * most plausibly get wrong — NO PHANTOM LOOP: once converged, idle ticks must
  * observe nothing, splice nothing, and trade nothing.
  */
+#include "voidmaiz/embed.hpp"
 #include "voidmaiz/net.hpp"
 #include "voidmaiz/project.hpp"
 #include "voidmaiz/wires.hpp"
@@ -467,6 +468,124 @@ int main() {
         b.core.dispatch(compile_wire(enc, fresh_wire_name("bo", 1), {"c2", 1}, {"c3", 1}));
         pump({&a, &b}, now, 60, wire);
         CHECK(drawn(a) == drawn(b));
+    }
+
+    // ── a rule of the mantle travels (live physics is one) ──────────────────
+    // The author: "I think 'live physics' is a rule or state of the mantle, and
+    // therefore, if live physics is turned on, it should be turned on for all
+    // synced devices. rather than a constant update of position information."
+    // A mantle HAS `rules` in the Core, so the question is only whether one
+    // crosses. It does, and it comes back off the same way.
+    {
+        Device a("ana", "replica-ana-0000000095"), b("bo", "replica-bo-00000000096", false, false);
+        NetMillis now = 1000;
+        Wire wire;
+        a.net->connect("bo", now);
+        b.net->connect("ana", now);
+        a.core.dispatch("card new anchor");
+        pump({&a, &b}, now, 60, wire);
+        b.adopt();
+
+        auto physics_of = [](Device& d) {
+            std::string out;
+            cJSON* root = cJSON_Parse(d.core.export_state().c_str());
+            const cJSON* m = nullptr;
+            cJSON_ArrayForEach(m, cJSON_GetObjectItemCaseSensitive(root, "mantles")) {
+                const cJSON* r = nullptr;
+                cJSON_ArrayForEach(r, cJSON_GetObjectItemCaseSensitive(m, "rules")) {
+                    const cJSON* k = cJSON_GetObjectItemCaseSensitive(r, "rule");
+                    const cJSON* v = cJSON_GetObjectItemCaseSensitive(r, "driver");
+                    if (cJSON_IsString(k) && std::string(k->valuestring) == "physics")
+                        out = cJSON_IsString(v) ? v->valuestring : "?";
+                }
+            }
+            cJSON_Delete(root);
+            return out;
+        };
+
+        CHECK(physics_of(a).empty() && physics_of(b).empty());
+        a.core.dispatch("rule add " + arg(R"({"rule":"physics","driver":"ana"})"));
+        pump({&a, &b}, now, 80, wire);
+        CHECK(physics_of(a) == "ana");
+        CHECK(physics_of(b) == "ana"); // the other screen is now running it too
+        a.core.dispatch("rule rm 0");
+        pump({&a, &b}, now, 80, wire);
+        CHECK(physics_of(a).empty());
+        CHECK(physics_of(b).empty()); // and off is just as shared as on
+    }
+
+    // ── the author's second report: a node made on EACH device, and a wire gone ─
+    // "drag a port, and from that create a node with a connection, that doesn't
+    // sync" (2026-09-22). Both devices minted `gamma-1`, so one name meant two
+    // nodes and every wire naming it became ambiguous.
+    {
+        Device a("ana", "replica-ana-0000000091"), b("bo", "replica-bo-00000000092", false, false);
+        const char* kG = R"({"glyph":"gamma","label":"gamma","fields":[],"hints":{"ports":[{"name":"prin","principal":true},{"name":"a"},{"name":"b"}]}})";
+        const char* kW = R"({"glyph":"wire","label":"wire","fields":[]})";
+        for (Device* d : {&a, &b}) {
+            d->core.register_glyph(kG);
+            d->core.register_glyph(kW);
+        }
+        WireEncoding enc;
+        NetMillis now = 1000;
+        Wire wire;
+        a.net->connect("bo", now);
+        b.net->connect("ana", now);
+        a.core.dispatch("rune new gamma anchor");
+        pump({&a, &b}, now, 60, wire);
+        b.adopt();
+
+        auto add_and_link = [&](Device& d, const std::string& tag, const char* to_node, int to_port) {
+            Scene s = collapse_wires(project_scene(d.core), enc);
+            std::string name = unique_name(s, "gamma", tag); // the canvas's own minter
+            d.core.dispatch(compile_batch({"rune new gamma " + name, compile_move(name, 10, 10)}));
+            d.core.dispatch(compile_wire(enc, fresh_wire_name(tag.empty() ? "x" : tag, 7 + tag.size()),
+                                         {name, 0}, {to_node, to_port}));
+            return name;
+        };
+        auto wires_of = [&](Device& d) {
+            Scene s = collapse_wires(project_scene(d.core), enc);
+            return s.wires.size();
+        };
+
+        // WITHOUT a device tag: both devices mint the same name
+        std::string na = add_and_link(a, "", "anchor", 1);
+        std::string nb = add_and_link(b, "", "anchor", 2);
+        CHECK(na == nb); // "gamma-1" on both: the bug, in one line
+        pump({&a, &b}, now, 80, wire);
+        bool duplicate = false;
+        for (const auto& an : a.net->anomalies())
+            if (an.kind == "duplicate_name") duplicate = true;
+        CHECK(duplicate);                        // Palabra sees it
+        CHECK(wires_of(a) != 3 || wires_of(b) != 3); // and a wire is missing somewhere
+
+        // WITH one: the same gesture on both devices, and both screens agree
+        Device c("cy", "replica-cy-0000000093"), d("di", "replica-di-00000000094", false, false);
+        for (Device* x : {&c, &d}) {
+            x->core.register_glyph(kG);
+            x->core.register_glyph(kW);
+        }
+        NetMillis now2 = 1000;
+        Wire wire2;
+        c.net->connect("di", now2);
+        d.net->connect("cy", now2);
+        c.core.dispatch("rune new gamma anchor");
+        pump({&c, &d}, now2, 60, wire2);
+        d.adopt();
+        auto add2 = [&](Device& dev, const std::string& tag, const char* to_node, int to_port) {
+            Scene s = collapse_wires(project_scene(dev.core), enc);
+            std::string name = unique_name(s, "gamma", tag);
+            dev.core.dispatch(compile_batch({"rune new gamma " + name, compile_move(name, 10, 10)}));
+            dev.core.dispatch(compile_wire(enc, fresh_wire_name(tag, 1), {name, 0}, {to_node, to_port}));
+            return name;
+        };
+        std::string nc = add2(c, "cy-", "anchor", 1);
+        std::string nd = add2(d, "di-", "anchor", 2);
+        CHECK(nc != nd);
+        pump({&c, &d}, now2, 80, wire2);
+        CHECK(c.net->anomalies().empty() && d.net->anomalies().empty());
+        CHECK(wires_of(c) == 2 && wires_of(d) == 2); // both wires, on both screens
+        CHECK(fingerprint(c.core) == fingerprint(d.core));
     }
 
     // ── …and the same case with PLAIN edges loses the wire (the contrast) ────

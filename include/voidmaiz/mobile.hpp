@@ -166,6 +166,46 @@ float dots_button_width(bool touch);
 bool begin_overflow_menu(const char* str_id, bool touch);
 void end_overflow_menu();
 
+/* Dim AND wrapped. `ImGui::TextDisabled` does not wrap, so the explaining
+ * sentence under a control — exactly the sentence a phone most needs — is cut
+ * off at the panel edge (seen in the update dialog's first screenshot). */
+void dim_wrapped(const char* text);
+
+/* ── a keyboard, drawn (Q29's lean, built 2026-09-22) ────────────────────────
+ * A phone running a Void Maiz application has no system keyboard: showing
+ * Android's means Java through JNI, and the APK's whole shape is that there is
+ * none. So the library draws one and feeds ImGui the same events a real keyboard
+ * would (`AddInputCharacter`, `AddKeyEvent`), which means EVERY text field works
+ * — a tag, a rune name, a net name, the command bar — with no change to the
+ * field. The author found it the hard way: "going to add a tag, the keyboard
+ * feature doesn't work".
+ *
+ * It is called FIRST, immediately after `ImGui::NewFrame()`, and nowhere else:
+ *
+ *     ImGui::NewFrame();
+ *     maiz::keyboard(kb, touch_mode);   // shows itself only when a field wants input
+ *
+ * That position is the design, not a convenience. The keyboard draws itself in
+ * the foreground draw list and hit-tests its own keys, so that it can do the two
+ * things an ImGui window cannot:
+ *   - appear ON TOP of a modal (Save As, Settings), whose fields are exactly the
+ *     ones you need to type into, and which blocks every ordinary window;
+ *   - EAT the touch that pressed a key, before any widget sees it. A key that was
+ *     a button would take the click, ImGui would deactivate the text field for
+ *     losing focus, and the keyboard would close on its own first keystroke.
+ * It appears when ImGui says something wants text (`io.WantTextInput`), takes the
+ * bottom of the screen, and reports `height` for a host that wants to keep the
+ * focused field above it. */
+struct KeyboardState {
+    bool shift = false;   // next letter upper case
+    bool symbols = false; // the second page: digits and punctuation
+    bool visible = false; // set by keyboard(): what it decided this frame
+    float height = 0.0f;  // what it covered, in pixels (0 when hidden)
+};
+
+/* Draws when a field wants input; returns true if it drew. */
+bool keyboard(KeyboardState& state, bool touch);
+
 /* ── the action button (FAB) and its speed dial ──────────────────────────────
  * A menu bar sits where a thumb cannot reach; the primary action belongs in the
  * bottom corner. `fab` is the single button; `speed_dial` expands it into a

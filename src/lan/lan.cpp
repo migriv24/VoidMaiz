@@ -66,6 +66,13 @@ std::optional<Ipv4> Ipv4::parse(std::string_view s) {
     return Ipv4{out};
 }
 
+std::string network_hint(Ipv4 a) {
+    const std::uint32_t h = a.host;
+    if ((h & 0xFFFFFF00u) == 0xC0A82B00u) return "a phone's hotspot";   // 192.168.43.x
+    if ((h & 0xFFFFFF00u) == 0xC0A83100u) return "a Wi-Fi Direct group"; // 192.168.49.x
+    return {};
+}
+
 Kind classify(Ipv4 a) {
     std::uint32_t h = a.host;
     if ((h >> 24) == 127) return Kind::Loopback;

@@ -85,6 +85,15 @@ struct CanvasStyle {
      * (voidmaiz/wires.hpp: concurrent rewires then commute) passes
      * reified_writer(...) and every wire gesture compiles through it. */
     WireWriter wires;
+    /* Scopes the names this canvas mints for new nodes (see unique_name). A host
+     * that shares its document MUST set it: two devices minting one name is a
+     * wire that vanishes on the other screen. */
+    std::string device_tag;
+    /* Set by apply_touch_canvas. On glass a long press IS a right-click
+     * (touch.hpp), and on empty canvas that opens the add palette where the
+     * finger is — "press and hold to create a node", which the author asked for
+     * (2026-09-22) and which every node-graph host on glass wants. */
+    bool touch = false;
     BlockMetrics block;              // block-shape geometry + snap thresholds
                                      // (shared with the UI-free snap compiler)
 };

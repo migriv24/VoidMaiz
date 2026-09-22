@@ -4,7 +4,9 @@
 
 #include <algorithm>
 #include <cfloat>
+#include <cctype>
 #include <cmath>
+#include <cfloat>
 #include <cstdio>
 
 namespace maiz {
@@ -35,6 +37,7 @@ void apply_touch_canvas(CanvasStyle& style, const TouchProfile& profile) {
     // small on purpose — the recognizer already decided tap vs drag
     style.click_slop = profile.px(1.0f);
     style.hover_tooltips = false;
+    style.touch = true; // long press on empty canvas adds a node
 }
 
 // ── bottom sheet ─────────────────────────────────────────────────────────────
@@ -400,6 +403,104 @@ void end_swipe_row(SwipeListState& st) {
     (void)st;
     ImGui::PopID();
     ImGui::Spacing();
+}
+
+/* Dim AND wrapped (voidmaiz/mobile.hpp). */
+void dim_wrapped(const char* text) {
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+    ImGui::TextWrapped("%s", text);
+    ImGui::PopStyleColor();
+}
+
+// ── a drawn keyboard ─────────────────────────────────────────────────────────
+
+bool keyboard(KeyboardState& st, bool touch) {
+    ImGuiIO& io = ImGui::GetIO();
+    st.visible = touch && io.WantTextInput;
+    st.height = 0.0f;
+    if (!st.visible) {
+        st.shift = false;
+        st.symbols = false;
+        return false;
+    }
+    static const char* letters[3] = {"qwertyuiop", "asdfghjkl", "zxcvbnm"};
+    static const char* symbols[3] = {"1234567890", "-_/:.,@", "!?'\"()+="};
+    const char** rows = st.symbols ? symbols : letters;
+
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const ImGuiViewport* vp = ImGui::GetMainViewport();
+    ImDrawList* dl = ImGui::GetForegroundDrawList();
+
+    const float gap = std::round(style.ItemSpacing.x * 0.5f) + 1.0f;
+    const float key_h = std::round(ImGui::GetFontSize() * 2.1f);
+    const float total = key_h * 4 + gap * 5;
+    st.height = total;
+
+    const ImVec2 pmin(vp->WorkPos.x, vp->WorkPos.y + vp->WorkSize.y - total);
+    const ImVec2 pmax(vp->WorkPos.x + vp->WorkSize.x, vp->WorkPos.y + vp->WorkSize.y);
+    dl->AddRectFilled(pmin, pmax, ImGui::GetColorU32(ImGuiCol_WindowBg, 0.98f));
+    dl->AddLine(pmin, ImVec2(pmax.x, pmin.y), ImGui::GetColorU32(ImGuiCol_Border));
+
+    const bool over = io.MousePos.x >= pmin.x && io.MousePos.x <= pmax.x &&
+                      io.MousePos.y >= pmin.y && io.MousePos.y <= pmax.y;
+    const float unit = (vp->WorkSize.x - gap * 11) / 10.0f;
+
+    float x = 0, y = pmin.y + gap;
+    auto key = [&](const char* label, float units, bool accent) {
+        ImVec2 a(pmin.x + x, y);
+        ImVec2 b(a.x + unit * units + gap * (units - 1.0f), a.y + key_h);
+        x += (b.x - a.x) + gap;
+        const bool hot = over && io.MousePos.x >= a.x && io.MousePos.x <= b.x &&
+                         io.MousePos.y >= a.y && io.MousePos.y <= b.y;
+        ImGuiCol c = ImGuiCol_Button;
+        if (hot && io.MouseDown[0]) c = ImGuiCol_ButtonActive;
+        else if (accent) c = ImGuiCol_ButtonHovered;
+        dl->AddRectFilled(a, b, ImGui::GetColorU32(c), style.FrameRounding);
+        ImVec2 t = ImGui::CalcTextSize(label);
+        dl->AddText(ImVec2(std::round((a.x + b.x - t.x) * 0.5f),
+                           std::round((a.y + b.y - t.y) * 0.5f)),
+                    ImGui::GetColorU32(ImGuiCol_Text), label);
+        return hot && io.MouseClicked[0];
+    };
+
+    for (int r = 0; r < 3; ++r) {
+        const std::string row = rows[r];
+        // the shorter rows sit centred, as on every phone
+        x = std::max(0.0f, (vp->WorkSize.x - (unit * row.size() + gap * (row.size() - 1))) * 0.5f);
+        for (char ch : row) {
+            if (!st.symbols && st.shift) ch = (char)std::toupper((unsigned char)ch);
+            const char label[2] = {ch, 0};
+            if (key(label, 1.0f, false)) {
+                io.AddInputCharacter((unsigned)(unsigned char)ch);
+                st.shift = false;
+            }
+        }
+        y += key_h + gap;
+    }
+    x = gap;
+    if (key(st.symbols ? "abc" : "123", 1.4f, false)) st.symbols = !st.symbols;
+    if (key("shift", 1.4f, st.shift)) st.shift = !st.shift;
+    if (key("space", 3.4f, false)) io.AddInputCharacter(' ');
+    if (key("back", 1.4f, false)) {
+        io.AddKeyEvent(ImGuiKey_Backspace, true); // the field's own handler does the rest
+        io.AddKeyEvent(ImGuiKey_Backspace, false);
+    }
+    if (key("done", 1.4f, true)) {
+        io.AddKeyEvent(ImGuiKey_Enter, true);
+        io.AddKeyEvent(ImGuiKey_Enter, false);
+    }
+
+    if (over) {
+        /* The keyboard swallows the touch. Nothing under it hovers, nothing under
+         * it is clicked, and — the point — the text field being typed into never
+         * sees a click land outside itself, so it stays focused. */
+        io.MousePos = ImVec2(-FLT_MAX, -FLT_MAX);
+        for (int i = 0; i < IM_ARRAYSIZE(io.MouseDown); ++i) {
+            io.MouseDown[i] = false;
+            io.MouseClicked[i] = false;
+        }
+    }
+    return true;
 }
 
 // ── the action bar ──────────────────────────────────────────────────────────

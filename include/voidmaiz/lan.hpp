@@ -63,6 +63,13 @@ enum class Kind {
 };
 Kind classify(Ipv4 a);
 
+/* A phrase for what KIND of local network this address suggests, or empty for an
+ * ordinary one. Two phones with no router is a real case (okf/concepts/
+ * lan-transport.md): the answer that works today is one phone's hotspot, and a
+ * person cannot tell from the app whether they are on one. These are the ranges
+ * Android hands out, so the app can say what it is looking at. */
+std::string network_hint(Ipv4 a);
+
 struct Interface {
     std::string name;   // "wlan0", "en0", "Wi-Fi", "vEthernet (WSL)"
     Ipv4 address, netmask;

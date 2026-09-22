@@ -30,6 +30,43 @@ and Palabra's `SPEC.md` (§5, §11). Claims about other products (Figma, tldraw,
 Unreal Multi-User, Blender's multi-user add-on) are **recalled, not verified**,
 and are used only as prior art for UX patterns.
 
+# 0.0 What the second and third device tests changed (2026-09-22)
+
+Three sessions of real use, and every one of them found something a test had
+not. In order of how much they cost:
+
+**A node made on two devices at once was one node.** `unique_name` minted
+`gamma-1` on every device, and because a wire rune names its ends, one name for
+two runes made every wire touching it ambiguous — so wires vanished on the peer
+while the nodes themselves looked fine. That is why "make two nodes, then wire
+them" worked and "drag a port out and make a node there" did not: the first
+mints on one device only. Names are now scoped by a per-device tag
+(`unique_name(scene, glyph, device_tag)`, `CanvasStyle::device_tag`), and
+net_smoke asserts both halves: without a tag the duplicate name and the missing
+wire appear; with one, both screens agree.
+
+**Live physics is a rule of the mantle, not a switch on a device.** The author:
+*"if live physics is turned on, it should be turned on for all synced devices.
+rather than a constant update of position information."* Both halves are built.
+A mantle already has `rules` in the Core, so the rule crosses as one ordinary
+command — `{"rule":"physics","driver":"<device>"}` via
+[voidmaiz/rules.hpp](../../include/voidmaiz/rules.hpp) — and **one** device
+drives the simulation while the others receive the settled positions as ordinary
+moves. Streaming positions was never needed; agreeing on a rule was.
+
+**A long press on empty glass makes a node.** On touch the canvas opens the add
+palette where the finger is rather than a context menu whose only useful entry
+is that palette (`CanvasStyle::touch`, `EditorState::add_request` — which also
+lets a host's own button open it).
+
+**The phone had no keyboard**, so a tag could not be typed: `maiz::keyboard`
+draws one, in the foreground draw list so it survives a modal, hit-testing its
+own keys and swallowing the touch so the field it types into stays focused.
+
+**Tag suggestions are Maiz's now** ([tags.hpp](../../include/voidmaiz/tags.hpp)),
+ported from Void Hormiga on the author's call that every Void application should
+have them.
+
 # 0. The author's rulings, and what they changed
 
 1. **"i dont really like hard conflicts, because they slow productivity … i don't

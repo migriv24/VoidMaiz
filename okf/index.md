@@ -162,6 +162,16 @@ persistence are inherited from Void Core rather than bolted on.
   not last-writer-wins). The interaction-net trap: two redexes sharing a wire
   commute in the maths but not as edits. Undo in a session. Wire routes as
   content. 33 numbered edge cases. Questions Q31–Q35.
+- **[The LAN transport, and who owns it](/concepts/lan-transport.md)**
+  (2026-09-22, answering the author's "i don't know the ownership of these
+  things"): **Void Maiz owns reaching a device** (sockets, discovery, multicast
+  locks, radios — none of it knows what a document is), **Palabra owns what
+  crosses**, **the app owns who may join**. Two Android phones with no router:
+  a **hotspot works today with no code** (they land on an ordinary subnet, so
+  everything built already works), **Wi-Fi Direct** is worth building later as a
+  second transport behind the same seam but costs a Java `BroadcastReceiver`,
+  `NEARBY_WIFI_DEVICES` and a second discovery protocol, and **Wi-Fi Aware** is
+  a hardware gamble. `lan::network_hint` lets the panel say which it is on.
 - **[Updates](/concepts/updates.md)** (2026-09-21, on the author's call "all
   applications should be able to update themselves"): Void Mago owns what a release
   IS (`void-updates.json`, build-time only); Void Maiz owns the in-app client

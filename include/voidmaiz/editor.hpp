@@ -12,6 +12,7 @@
 #pragma once
 
 #include "voidmaiz/scene.hpp"
+#include "voidmaiz/tags.hpp" // SuggestMode: the inspector's suggestion chips
 
 #include <string>
 #include <string_view>
@@ -79,6 +80,19 @@ struct EditorState {
     // add-search box (Shift+A), also opened by a wire dropped on empty canvas
     bool add_open = false;
     float add_x = 0, add_y = 0; // world drop position
+
+    // tag suggestions under the inspector's add box (voidmaiz/tags.hpp): the
+    // mode is a view preference, the rest is a cache keyed on what it read
+    SuggestMode tag_suggest_mode = SuggestMode::Similar;
+    std::string tag_suggest_key;
+    std::vector<std::string> tag_suggest;
+
+    /* A host asking for the add palette, without a gesture: a "+" button, a menu
+     * entry, a test. Set it and the canvas opens the palette at that world point
+     * on its next frame, exactly as a long press or Shift+A does, and clears it.
+     * The canvas's own gestures go through here too, so there is one path. */
+    bool add_request = false;
+    float add_request_x = 0, add_request_y = 0;
     char add_filter[64] = {};
     // quick add-and-link: the dangling wire's fixed end (picked node links to
     // it via its principal — always legal, principals are untyped)

@@ -154,9 +154,11 @@ std::string compile_use(std::string_view mantle) {
     return "use " + std::string(mantle);
 }
 
-std::string unique_name(const Scene& scene, std::string_view glyph) {
+std::string unique_name(const Scene& scene, std::string_view glyph,
+                        std::string_view device_tag) {
+    std::string prefix = std::string(glyph) + "-" + std::string(device_tag);
     for (int n = 1;; ++n) {
-        std::string candidate = std::string(glyph) + "-" + std::to_string(n);
+        std::string candidate = prefix + std::to_string(n);
         if (!scene.find(candidate)) return candidate;
     }
 }

@@ -111,6 +111,8 @@ add_library(voidmaiz STATIC
   src/project/project.cpp
   src/gesture/gesture.cpp
   src/gesture/wires.cpp
+  src/gesture/rules.cpp
+  src/gesture/tags.cpp
   src/touch/touch.cpp
   src/presence/presence.cpp
   src/presence/claims.cpp
@@ -361,6 +363,10 @@ target_link_libraries(maiz_collab_smoke PRIVATE voidmaiz)
 add_test(NAME collab_smoke COMMAND maiz_collab_smoke)
 
 # Connections as wire runes: concurrent rewires commute (collaborative-canvas §4.2).
+add_executable(maiz_tags_smoke tests/tags_smoke.cpp)
+target_link_libraries(maiz_tags_smoke PRIVATE voidmaiz)
+add_test(NAME tags_smoke COMMAND maiz_tags_smoke)
+
 add_executable(maiz_wires_smoke tests/wires_smoke.cpp)
 target_link_libraries(maiz_wires_smoke PRIVATE voidmaiz_reduce)
 add_test(NAME wires_smoke COMMAND maiz_wires_smoke)

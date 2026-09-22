@@ -149,6 +149,37 @@ agent `+red` on one and `+blue` on the other at the same time.
 one plays its rewrite animation on the other; the two tags make purple on both.
 *Tests:* sync over the real LAN, remote playback, pigments merging.
 
+**M5 ★ Press and hold on empty canvas.** On the phone, press and hold where
+there is nothing.
+*Watch:* the add palette opens at your finger, with the search box focused and
+the keyboard up. Type a letter or two and pick one; the node lands where you
+pressed. Pressing and holding ON a node or a wire still opens the menu instead.
+*Tests:* the gesture the author asked for, and that it did not take the menu
+away from the things that need one.
+
+**M6 ★ The keyboard.** Select a node, and in the panel below tap `+ tag…`.
+*Watch:* a keyboard rises from the bottom. Type a tag and press **done**. `123`
+switches to digits and punctuation, `shift` capitalises one letter.
+*Watch for the thing that would break it:* the field must stay focused while you
+type — if the keyboard closes after one letter, say so.
+*Then:* the same keyboard should appear for the net name, Save As, and the
+profile name.
+
+**M7 Suggested tags.** Tag two or three agents of the same kind (say two
+constructors) with the same word, then select another constructor.
+*Watch:* under the tag box, outlined chips offer what its peers carry. One tap
+adds one. This is Void Hormiga's recommender, now in the library.
+
+**P1 ★ Live physics is shared.** With two devices joined, turn on **Live
+physics** (Edit menu, or Settings) on ONE of them.
+*Watch:* both screens start moving. Settings on the other device says another
+device is running it. Turn it off from EITHER device and both stop.
+*Watch for:* the positions should settle and then stay still — if the two
+devices fight over positions, they will jitter forever, which is the failure
+this design is meant to prevent.
+*Tests:* a rule of the mantle crossing as one command, and only one device
+simulating.
+
 **L5 ★ The phone sleeps.** While joined, turn the phone's screen off for a
 minute, then turn it back on.
 *Watch:* the PC says the phone "went quiet" within about 12 seconds (it no

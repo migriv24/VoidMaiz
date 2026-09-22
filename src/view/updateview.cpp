@@ -1,6 +1,7 @@
 /* updateview.cpp — what updating looks like (voidmaiz/updateview.hpp). */
 #include "voidmaiz/updateview.hpp"
 
+#include "voidmaiz/mobile.hpp"  // dim_wrapped
 #include "voidmaiz/widgets.hpp" // tool_button
 
 #include "imgui.h"
@@ -24,15 +25,6 @@ void size_modal(bool touch, float desktop_w) {
 }
 
 bool button(const char* label, bool touch) { return tool_button(label, touch); }
-
-/* Dim AND wrapped: TextDisabled does not wrap, and the sentence that makes the
- * consent question fair ("nothing is downloaded unless you choose it") was cut
- * off at the edge of the dialog (seen in the first screenshot). */
-void dim_wrapped(const char* text) {
-    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-    ImGui::TextWrapped("%s", text);
-    ImGui::PopStyleColor();
-}
 
 } // namespace
 

@@ -137,7 +137,16 @@ std::string compile_use(std::string_view mantle);
 // ── add box (piece 4) ────────────────────────────────────────────────────────
 
 /* `glyph-N`, unique against the scene's node names. */
-std::string unique_name(const Scene& scene, std::string_view glyph);
+/* A name for a new node, free in this scene: "gamma-1", "gamma-2", …
+ *
+ * `device_tag` scopes it to THIS device ("gamma-a3f-1"), and on a shared net it
+ * must not be empty. Every device minting `gamma-1` is how the author's session
+ * broke (2026-09-22): two different nodes ended up sharing one name, and since a
+ * wire names its ends, every wire touching that name became ambiguous and
+ * vanished on the other screen. It cost nothing to see: the nodes themselves
+ * looked fine. Solo, the tag is empty and the names stay short. */
+std::string unique_name(const Scene& scene, std::string_view glyph,
+                        std::string_view device_tag = {});
 
 /* Mint a rune at a canvas position: batch of `rune new` + `setjson pos`. */
 std::string compile_add(std::string_view glyph, std::string_view name, float x, float y);

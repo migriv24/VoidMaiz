@@ -1042,7 +1042,18 @@ CanvasIO edit_canvas(const char* str_id, const Scene& scene, EditorState& ed,
                 ImVec2 w = to_world(io.MousePos);
                 ed.ctx_wx = w.x;
                 ed.ctx_wy = w.y;
-                ImGui::OpenPopup("vm-canvas-ctx");
+                /* On glass, a long press on EMPTY canvas is "make something
+                 * here": the add palette opens where the finger is, rather than
+                 * a menu whose only useful entry is the same palette. A press on
+                 * a node or a wire still opens the menu — that is where delete,
+                 * collapse and the host's own entries live. */
+                if (style.touch && !hit && !ed.ctx_is_wire && palette) {
+                    ed.add_request = true;
+                    ed.add_request_x = w.x;
+                    ed.add_request_y = w.y;
+                } else {
+                    ImGui::OpenPopup("vm-canvas-ctx");
+                }
             }
             ed.drag = EditorState::Drag::None;
             ed.pan_left = false;
@@ -1401,12 +1412,18 @@ CanvasIO edit_canvas(const char* str_id, const Scene& scene, EditorState& ed,
             out.commands.push_back("redo");
     }
 
-    // ── add box (Shift+A at the cursor) ─────────────────────────────────────
+    // ── add box (Shift+A at the cursor, a long press on glass, or a host) ───
     if (palette && hovered && io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_A) &&
         ed.drag == EditorState::Drag::None) {
         ImVec2 w = to_world(io.MousePos);
-        ed.add_x = w.x;
-        ed.add_y = w.y;
+        ed.add_request = true;
+        ed.add_request_x = w.x;
+        ed.add_request_y = w.y;
+    }
+    if (palette && ed.add_request) {
+        ed.add_request = false;
+        ed.add_x = ed.add_request_x;
+        ed.add_y = ed.add_request_y;
         ed.add_filter[0] = '\0';
         ed.add_open = true;
         ed.add_link = false;
@@ -1460,7 +1477,7 @@ CanvasIO edit_canvas(const char* str_id, const Scene& scene, EditorState& ed,
         }
         if (entered && !picked) picked = first;
         if (picked) {
-            std::string name = unique_name(scene, picked->glyph);
+            std::string name = unique_name(scene, picked->glyph, style.device_tag);
             if (ed.add_link) {
                 // mint + place + link back to the dragged port, one batch.
                 // The new node's PRINCIPAL is the target: fettuccine from a
@@ -1778,7 +1795,8 @@ CanvasIO edit_canvas(const char* str_id, const Scene& scene, EditorState& ed,
                 auto add_item = [&](const AddPalette::Entry& entry) {
                     if (ImGui::MenuItem(entry.label.c_str()))
                         out.commands.push_back(compile_add(
-                            entry.glyph, unique_name(scene, entry.glyph), ed.ctx_wx, ed.ctx_wy));
+                            entry.glyph, unique_name(scene, entry.glyph, style.device_tag), ed.ctx_wx,
+                            ed.ctx_wy));
                 };
                 if (!any_cat) {
                     for (const auto& entry : palette->entries) add_item(entry);

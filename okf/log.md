@@ -6966,3 +6966,75 @@ the file said 0.4.0), and the health lines wrap.
 
 Shipped as Interaction Combinators **0.4.1**. Suite: 20/20 gating, duo selftest
 17/17, two-process LAN run identical on both sides.
+
+## 2026-09-22: A name minted twice, a rule that should have crossed, and a phone with no keyboard
+
+The author tested on two devices and came back with a list. Every item on it was
+real, and the first one was the interesting bug of this project so far.
+
+**The wiring bug, found.** *"select a port, then drag out, and then decide to
+put in a new node … then the sync doesn't work"* — and it was not the vicious
+cycles, and not the sleeping phone either. `unique_name(scene, glyph)` produced
+`gamma-1` on whichever device asked, so two devices creating a node each created
+the SAME NAME for two different runes. A wire rune names its ends, so every wire
+touching that name was ambiguous, and the merge dropped it. The nodes looked
+fine, which is why this took two sessions to see: the damage showed up one layer
+away from its cause. Names now carry a per-device tag, and `net_smoke` pins BOTH
+sides of it — without the tag, `na == nb`, a `duplicate_name` anomaly and a
+missing wire; with it, no anomalies and identical screens.
+
+It is worth naming the general shape, because it will happen again: **anything
+that mints an identifier locally is a merge bug waiting for a second device.**
+
+**Live physics is a rule of the mantle.** The author's framing was exactly
+right, including the part about what NOT to do: *"rather than a constant update
+of position information."* A mantle already has `rules` in the Core, and they
+merge — checked before building anything (net_smoke: a rule added on one device
+arrives on the other, and comes off the same way). So
+[rules.hpp](../include/voidmaiz/rules.hpp) names the shape
+(`{"rule":…,"driver":…}`), and the driver is the answer to the question a shared
+mode always raises: if everyone simulates, everyone writes positions and they
+fight. One device drives; the others receive what it settles on.
+
+**Press and hold to make a node**, on glass, on empty canvas — with the palette
+opening at the finger. It routes through a new `EditorState::add_request`, so a
+host's own "+" button opens the same palette by the same path.
+
+**A drawn keyboard** (`maiz::keyboard`), because a tag could not be typed on the
+phone. Two things make it work where an ordinary ImGui window would not: it
+draws into the FOREGROUND list, so it is above a modal — whose fields are
+exactly the ones needing it — and it hit-tests its own keys and then swallows
+the touch, because a key that was a button would take the click and ImGui would
+deactivate the very field being typed into. It is called first, right after
+`NewFrame`, and that position is the design.
+
+**Tag suggestions came home.** Ported from Void Hormiga (its recommender, 2026-
+08-05) into [tags.hpp](../include/voidmaiz/tags.hpp) as a pure function over a
+Scene — it never needed anything else. One deliberate change: the comprehensive
+mode now takes the BEST link a tag would forge rather than the sum, because
+summing let two well-connected peers outvote the one stranded node the mode
+exists to reach. `tags_smoke` holds Hormiga's own verification graph.
+
+**Ownership, answered** in [lan-transport.md](concepts/lan-transport.md), since
+the author asked and apologised for not knowing: Maiz owns reaching a device,
+Palabra owns what crosses, the app owns who may join. For two phones and no
+router, the honest answer today is a hotspot — it needs no code at all, because
+nothing we built assumed a router — and Wi-Fi Direct is a later transport behind
+the same seam, priced out in that doc rather than guessed at.
+
+**A Linux build** (`tools/build_linux.sh` in Interaction Combinators, with
+`bundle_sources.sh` beside it) so the author can put a third device on the net.
+It is a script rather than a GitHub Action for a reason worth writing down: two
+of the five repositories are unpublished, so a cloud runner would build the app
+WITHOUT networking — which is the one thing the third device was for.
+
+**Measured.** Maiz 21/22 (`tags_smoke` new; `reduce_conformance` red — see
+below), duo selftest 17/17, and two real processes over real sockets ending with
+identical nets. The `--probe-out` file now prints each link's state, after a run
+where "looking for the host" was the joiner correctly noticing the host had quit
+first, and looked for a moment like a dropped link.
+
+**Pre-existing, unrelated, and now visible:** `reduce_conformance` is 17/25.
+Cases 17–25 arrived in Void Core's shared corpus on 2026-09-01 (boxes, a
+reserved separator, `patch` content) and our C++ reducer has never implemented
+them. It is not a regression from any of this work, and it is not a small job.
