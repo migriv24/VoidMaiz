@@ -25,6 +25,8 @@
  */
 #pragma once
 
+#include "voidmaiz/scene.hpp"
+
 #include <functional>
 #include <map>
 #include <set>
@@ -103,6 +105,15 @@ Spec spec_from_json(std::string_view spec_json);
 /* The strict mantle adapter (contract §4): runes + layout.edges JSON → Net.
  * Every edge relation MUST be "i:j"; anything else throws NetError. */
 Net to_net(std::string_view mantle_json, const std::map<std::string, int>& signatures);
+
+/* The same net, read from a projected Scene instead of mantle JSON — so a host
+ * whose connections are WIRE RUNES (voidmaiz/wires.hpp) reduces what it draws:
+ * pass collapse_wires(project_scene(core)). Agents are the scene's nodes, by
+ * name, arity from `signatures` (0 if absent), tags carried. Every wire with
+ * two ports connects; a wire with no ports ("Loose") or one marked `contested`
+ * (a merge that broke "a wire has two ends") throws NetError — the strict adapter
+ * never guesses. Content is not in a Scene, so agents carry "{}". */
+Net to_net(const Scene& scene, const std::map<std::string, int>& signatures);
 
 /* Reduce to normal form — pure (the input is copied, never mutated).
  * `opaque` freezes agents by id or glyph. `pick` chooses the index of the

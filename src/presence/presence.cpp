@@ -1,11 +1,15 @@
 /* presence.cpp — networking, the half an application shows (voidmaiz/presence.hpp). */
 #include "voidmaiz/presence.hpp"
 
+#include "voidmaiz/embed.hpp" // split_argv: reading a recent command line before it leaves
+
 #include "cJSON.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <initializer_list>
 
 namespace maiz {
 
@@ -25,6 +29,28 @@ bool parse_mark(std::string_view text, Mark& out) {
     for (Mark m : {Mark::Outline, Mark::Badge, Mark::Tint, Mark::None})
         if (text == mark_name(m)) {
             out = m;
+            return true;
+        }
+    return false;
+}
+
+std::string_view gesture_name(CanvasGesture g) {
+    switch (g) {
+    case CanvasGesture::None: return "none";
+    case CanvasGesture::Move: return "move";
+    case CanvasGesture::Wire: return "wire";
+    case CanvasGesture::Marquee: return "marquee";
+    case CanvasGesture::Resize: return "resize";
+    case CanvasGesture::Typing: return "typing";
+    }
+    return "none";
+}
+
+bool parse_gesture(std::string_view text, CanvasGesture& out) {
+    for (CanvasGesture g : {CanvasGesture::None, CanvasGesture::Move, CanvasGesture::Wire,
+                            CanvasGesture::Marquee, CanvasGesture::Resize, CanvasGesture::Typing})
+        if (text == gesture_name(g)) {
+            out = g;
             return true;
         }
     return false;
@@ -130,6 +156,79 @@ PresenceState compose_presence(const Profile& self, const std::vector<std::strin
     return s;
 }
 
+PresenceState compose_presence(const Profile& self, const std::vector<std::string>& selection,
+                               const Surfaces& surfaces, const SharePolicy& policy,
+                               const Scene& scene, const ShareFilter& filter,
+                               const CollabOut& collab) {
+    PresenceState s = compose_presence(self, selection, surfaces, policy, scene, filter);
+    s.kind = collab.kind;
+    s.device = collab.device;
+    s.compat = collab.compat;
+    s.clock = collab.clock;
+
+    // rule 3, applied to everything in flight: name nothing the sender cannot
+    // vouch for, and nothing that stays on this device
+    auto vouched = [&](const std::string& id) {
+        const SceneNode* n = find_by_id(scene, id);
+        return n && (!filter || filter(*n));
+    };
+
+    for (CanvasPresence c : collab.canvas) {
+        if (!policy.cursor) c.has_cursor = c.has_view = false;
+        switch (c.gesture) {
+        case CanvasGesture::Move: // the ghost IS the selection, offset
+            if (!policy.gestures || !policy.selection || s.selection.empty())
+                c.gesture = CanvasGesture::None;
+            break;
+        case CanvasGesture::Wire:
+            if (!policy.gestures || !vouched(c.wire_rune)) c.gesture = CanvasGesture::None;
+            break;
+        case CanvasGesture::Marquee:
+            if (!policy.gestures) c.gesture = CanvasGesture::None;
+            break;
+        case CanvasGesture::Resize:
+            if (!policy.gestures || !vouched(c.field_rune)) c.gesture = CanvasGesture::None;
+            break;
+        case CanvasGesture::Typing:
+            if (!policy.typing || !vouched(c.field_rune)) c.gesture = CanvasGesture::None;
+            else if (!policy.preview) c.preview.clear();
+            break;
+        case CanvasGesture::None: break;
+        }
+        if (c.gesture != CanvasGesture::Wire) {
+            c.wire_rune.clear();
+            c.wire_port = -1;
+        }
+        if (c.gesture != CanvasGesture::Typing && c.gesture != CanvasGesture::Resize) {
+            c.field_rune.clear();
+            c.field_key.clear();
+        }
+        if (c.gesture != CanvasGesture::Typing) c.preview.clear();
+        s.canvas.push_back(std::move(c));
+    }
+
+    for (const Claim& cl : collab.claims)
+        if (vouched(cl.rune) || (!cl.rune.empty() && cl.rune == scene.mantle))
+            s.claims.push_back(cl);
+
+    if (policy.recent) {
+        // a command line naming a private rune (by name or id) is dropped whole:
+        // a redacted line would still say "something here was touched"
+        std::vector<const SceneNode*> hidden;
+        for (const auto& n : scene.nodes)
+            if (filter && !filter(n)) hidden.push_back(&n);
+        for (const auto& line : collab.recent) {
+            Argv a = split_argv(line);
+            bool leaks = !a; // a line we cannot read is a line we cannot vouch for
+            for (const auto& tok : a.argv)
+                for (const SceneNode* n : hidden)
+                    if (tok == n->name || tok == n->id) leaks = true;
+            if (!leaks) s.recent.push_back(line);
+        }
+    }
+    return s;
+}
+
 // ── codec ────────────────────────────────────────────────────────────────────
 
 namespace {
@@ -142,6 +241,107 @@ void add_list(cJSON* obj, const char* key, const std::vector<std::string>& items
 bool fail(std::string* error, const char* why) {
     if (error) *error = why;
     return false;
+}
+
+void add_nums(cJSON* obj, const char* key, std::initializer_list<float> v) {
+    cJSON* arr = cJSON_AddArrayToObject(obj, key);
+    for (float f : v) cJSON_AddItemToArray(arr, cJSON_CreateNumber(f));
+}
+
+/* An optional array of exactly `n` finite numbers within ±max_coord. Refused
+ * rather than clamped: a clamped cursor is a lie about where someone is. */
+bool read_nums(const cJSON* obj, const char* key, float* out, int n, bool& present,
+               const PresenceLimits& lim, std::string* error) {
+    present = false;
+    const cJSON* v = cJSON_GetObjectItemCaseSensitive(obj, key);
+    if (!v) return true;
+    if (!cJSON_IsArray(v) || cJSON_GetArraySize(v) != n)
+        return fail(error, "a coordinate field has the wrong shape");
+    int i = 0;
+    const cJSON* it = nullptr;
+    cJSON_ArrayForEach(it, v) {
+        if (!cJSON_IsNumber(it) || !std::isfinite(it->valuedouble) ||
+            std::fabs(it->valuedouble) > lim.max_coord)
+            return fail(error, "a coordinate is not a finite number in range");
+        out[i++] = (float)it->valuedouble;
+    }
+    present = true;
+    return true;
+}
+
+/* An optional non-negative integer no larger than `max`. */
+bool read_uint(const cJSON* obj, const char* key, double max, std::uint64_t& out,
+               std::string* error) {
+    const cJSON* v = cJSON_GetObjectItemCaseSensitive(obj, key);
+    if (!v) return true;
+    if (!cJSON_IsNumber(v) || !std::isfinite(v->valuedouble) || v->valuedouble < 0 ||
+        v->valuedouble > max || v->valuedouble != std::floor(v->valuedouble))
+        return fail(error, "an integer field is out of range");
+    out = (std::uint64_t)v->valuedouble;
+    return true;
+}
+
+bool read_str(const cJSON* obj, const char* key, std::string& out, const PresenceLimits& lim,
+              std::string* error);
+
+bool read_canvas(const cJSON* o, CanvasPresence& c, const PresenceLimits& lim,
+                 std::string* error) {
+    if (!cJSON_IsObject(o)) return fail(error, "a canvas entry is not an object");
+    if (!read_str(o, "surface", c.surface, lim, error)) return false;
+    float xy[4];
+    bool present = false;
+    if (!read_nums(o, "cursor", xy, 2, present, lim, error)) return false;
+    if ((c.has_cursor = present)) {
+        c.cursor_x = xy[0];
+        c.cursor_y = xy[1];
+    }
+    if (!read_nums(o, "view", xy, 4, present, lim, error)) return false;
+    if ((c.has_view = present)) {
+        c.view_x0 = xy[0];
+        c.view_y0 = xy[1];
+        c.view_x1 = xy[2];
+        c.view_y1 = xy[3];
+    }
+    std::string g;
+    if (!read_str(o, "gesture", g, lim, error)) return false;
+    if (!g.empty() && !parse_gesture(g, c.gesture)) return fail(error, "unknown gesture");
+    if (!read_nums(o, "offset", xy, 2, present, lim, error)) return false;
+    if (present) {
+        c.dx = xy[0];
+        c.dy = xy[1];
+    }
+    if (!read_str(o, "wire_rune", c.wire_rune, lim, error)) return false;
+    if (cJSON_GetObjectItemCaseSensitive(o, "wire_port")) {
+        std::uint64_t port = 0;
+        if (!read_uint(o, "wire_port", 1e6, port, error)) return false;
+        c.wire_port = (int)port;
+    }
+    if (!read_nums(o, "marquee", xy, 4, present, lim, error)) return false;
+    if (present) {
+        c.mq_x0 = xy[0];
+        c.mq_y0 = xy[1];
+        c.mq_x1 = xy[2];
+        c.mq_y1 = xy[3];
+    }
+    if (!read_str(o, "field_rune", c.field_rune, lim, error)) return false;
+    if (!read_str(o, "field_key", c.field_key, lim, error)) return false;
+    PresenceLimits wide = lim;
+    wide.max_str = lim.max_preview;
+    if (!read_str(o, "preview", c.preview, wide, error)) return false;
+    std::uint64_t seq = 0;
+    if (!read_uint(o, "ping_seq", 4294967295.0, seq, error)) return false;
+    c.ping_seq = (std::uint32_t)seq;
+    if (!read_nums(o, "ping", xy, 2, present, lim, error)) return false;
+    if (present) {
+        c.ping_x = xy[0];
+        c.ping_y = xy[1];
+    }
+    // a gesture must carry what it names
+    if (c.gesture == CanvasGesture::Wire && c.wire_rune.empty())
+        return fail(error, "a wire gesture names no rune");
+    if (c.gesture == CanvasGesture::Typing && (c.field_rune.empty() || c.field_key.empty()))
+        return fail(error, "a typing gesture names no field");
+    return true;
 }
 
 /* Read an optional string member. Absent is fine; present-but-wrong is not. */
@@ -187,6 +387,50 @@ std::string presence_to_json(const PresenceState& st) {
     add_list(root, "selection", st.selection);
     add_list(root, "surfaces", st.surfaces);
     if (!st.focus.empty()) cJSON_AddStringToObject(root, "focus", st.focus.c_str());
+    if (st.kind == Participant::Agent) cJSON_AddStringToObject(root, "kind", "agent");
+    if (!st.device.empty()) cJSON_AddStringToObject(root, "device", st.device.c_str());
+    if (!st.compat.empty()) cJSON_AddStringToObject(root, "compat", st.compat.c_str());
+    if (st.clock) cJSON_AddNumberToObject(root, "clock", (double)st.clock);
+    if (!st.canvas.empty()) {
+        cJSON* arr = cJSON_AddArrayToObject(root, "canvas");
+        for (const auto& c : st.canvas) {
+            cJSON* o = cJSON_CreateObject();
+            cJSON_AddStringToObject(o, "surface", c.surface.c_str());
+            if (c.has_cursor) add_nums(o, "cursor", {c.cursor_x, c.cursor_y});
+            if (c.has_view) add_nums(o, "view", {c.view_x0, c.view_y0, c.view_x1, c.view_y1});
+            if (c.gesture != CanvasGesture::None) {
+                cJSON_AddStringToObject(o, "gesture", std::string(gesture_name(c.gesture)).c_str());
+                if (c.gesture == CanvasGesture::Move) add_nums(o, "offset", {c.dx, c.dy});
+                if (c.gesture == CanvasGesture::Wire) {
+                    cJSON_AddStringToObject(o, "wire_rune", c.wire_rune.c_str());
+                    if (c.wire_port >= 0) cJSON_AddNumberToObject(o, "wire_port", c.wire_port);
+                }
+                if (c.gesture == CanvasGesture::Marquee)
+                    add_nums(o, "marquee", {c.mq_x0, c.mq_y0, c.mq_x1, c.mq_y1});
+                if (!c.field_rune.empty())
+                    cJSON_AddStringToObject(o, "field_rune", c.field_rune.c_str());
+                if (!c.field_key.empty())
+                    cJSON_AddStringToObject(o, "field_key", c.field_key.c_str());
+                if (!c.preview.empty()) cJSON_AddStringToObject(o, "preview", c.preview.c_str());
+            }
+            if (c.ping_seq) {
+                cJSON_AddNumberToObject(o, "ping_seq", c.ping_seq);
+                add_nums(o, "ping", {c.ping_x, c.ping_y});
+            }
+            cJSON_AddItemToArray(arr, o);
+        }
+    }
+    if (!st.claims.empty()) {
+        cJSON* arr = cJSON_AddArrayToObject(root, "claims");
+        for (const auto& cl : st.claims) {
+            cJSON* o = cJSON_CreateObject();
+            cJSON_AddStringToObject(o, "rune", cl.rune.c_str());
+            if (!cl.part.empty()) cJSON_AddStringToObject(o, "part", cl.part.c_str());
+            cJSON_AddNumberToObject(o, "stamp", (double)cl.stamp);
+            cJSON_AddItemToArray(arr, o);
+        }
+    }
+    if (!st.recent.empty()) add_list(root, "recent", st.recent);
     char* text = cJSON_PrintUnformatted(root);
     std::string out = text ? text : "{}";
     cJSON_free(text);
@@ -219,6 +463,60 @@ bool presence_from_json(std::string_view json, PresenceState& out, std::string* 
         if (!read_list(root, "selection", st.selection, lim, error)) break;
         if (!read_list(root, "surfaces", st.surfaces, lim, error)) break;
         if (!read_str(root, "focus", st.focus, lim, error)) break;
+
+        std::string kind;
+        if (!read_str(root, "kind", kind, lim, error)) break;
+        if (kind == "agent") {
+            st.kind = Participant::Agent;
+        } else if (!kind.empty() && kind != "person") {
+            fail(error, "unknown participant kind");
+            break;
+        }
+        if (!read_str(root, "device", st.device, lim, error)) break;
+        if (!read_str(root, "compat", st.compat, lim, error)) break;
+        // 2^53: the largest integer a JSON number carries exactly
+        if (!read_uint(root, "clock", 9007199254740992.0, st.clock, error)) break;
+
+        bool bad = false;
+        if (const cJSON* arr = cJSON_GetObjectItemCaseSensitive(root, "canvas")) {
+            if (!cJSON_IsArray(arr)) { fail(error, "`canvas` is not an array"); break; }
+            if ((std::size_t)cJSON_GetArraySize(arr) > lim.max_canvas) {
+                fail(error, "`canvas` exceeds max_canvas");
+                break;
+            }
+            const cJSON* it = nullptr;
+            cJSON_ArrayForEach(it, arr) {
+                CanvasPresence c;
+                if (!read_canvas(it, c, lim, error)) { bad = true; break; }
+                st.canvas.push_back(std::move(c));
+            }
+            if (bad) break;
+        }
+        if (const cJSON* arr = cJSON_GetObjectItemCaseSensitive(root, "claims")) {
+            if (!cJSON_IsArray(arr)) { fail(error, "`claims` is not an array"); break; }
+            if ((std::size_t)cJSON_GetArraySize(arr) > lim.max_claims) {
+                fail(error, "`claims` exceeds max_claims");
+                break;
+            }
+            const cJSON* it = nullptr;
+            cJSON_ArrayForEach(it, arr) {
+                Claim cl;
+                if (!cJSON_IsObject(it)) { fail(error, "a claim is not an object"); bad = true; break; }
+                if (!read_str(it, "rune", cl.rune, lim, error) ||
+                    !read_str(it, "part", cl.part, lim, error) ||
+                    !read_uint(it, "stamp", 9007199254740992.0, cl.stamp, error)) {
+                    bad = true;
+                    break;
+                }
+                if (cl.rune.empty()) { fail(error, "a claim names no rune"); bad = true; break; }
+                st.claims.push_back(std::move(cl));
+            }
+            if (bad) break;
+        }
+        PresenceLimits recent_lim = lim;
+        recent_lim.max_ids = lim.max_recent;
+        recent_lim.max_str = lim.max_preview; // a command line may be longer than a name
+        if (!read_list(root, "recent", st.recent, recent_lim, error)) break;
         ok = true;
     } while (false);
     cJSON_Delete(root);

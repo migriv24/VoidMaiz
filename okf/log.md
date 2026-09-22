@@ -6550,3 +6550,215 @@ behaviour. Their 09-18 message is retired into it — one open message at a time
 their convention, and the touch asks carried forward in §9.
 
 Suite: 15/15 gating, `reduce_conformance` unchanged at 17/25.
+
+## 2026-09-20: The collaborative canvas, researched. What happens when several people edit one node graph
+
+The author turned from networking in general to **the node graph in
+particular**: *"how colaboration in a node graph could look like with multiple
+people … node placements matter, the way wires are routed matter. the entry
+fields and stuff"*, demonstrated by Interaction Combinators across desktop and
+Android over LAN. Research only. Nothing built. Written up as
+[collaborative canvas](/concepts/collaborative-canvas.md), with five questions
+(Q31–Q35).
+
+**The organising idea is three channels.** *Committed* (commands, synced by
+Palabra), *in flight* (presence: gestures before they become commands) and
+*local* (camera, panels). The canvas already stages every gesture and commits one
+command on release, so collaboration mostly asks us to **show the staged half**
+over presence: cursors, drag ghosts (one offset for the whole selection, not a
+position per node), pending wires, typing, claims and pings. All three founding
+commitments survive, because a gesture in flight changes nothing. Presence gains
+geometry only in a canvas-scoped block, and `SurfaceDecl` stays geometry-free.
+
+**What the existing commands do when they race** was checked against Palabra's
+SPEC §5 rather than assumed. Fields are multi-value registers, so **two people
+dragging one node produce a conflict, not last-writer-wins**. Tags and edges are
+add-wins sets. A concurrent `+red`/`+blue` on one agent therefore merges into
+both tags, and IC's pigment net mixes them into purple, which is the demo's best
+single moment.
+
+**Five findings that change the design, all measured in code:**
+
+1. **Two disjoint redexes that share a wire commute in the maths but not as
+   edits.** Stepped concurrently, the merge leaves two dangling half-wires, and
+   the joined wire no peer wrote is missing. Strong confluence belongs to the
+   net, not to the edit operations. That is Q31, with a path (claims, then derived
+   ids upstream, then a deterministic re-knot) that could make concurrent
+   reduction merge-safe everywhere.
+2. **IC names minted agents by first-free local search** and `rune new` mints
+   random ids, while edges address names. Concurrent steps and adds therefore
+   collide on names. Void Core's SPEC §3.1 already carves out derived ids for
+   reduction-minted agents, but IC's step is a plain `batch` and cannot use it.
+3. **IC's `init` seeds `mantle new lafont` and a starter net.** A joiner doing
+   the same reproduces exactly the bug `net_smoke` first had.
+4. **Every merge clears undo** (correctly), so undo stops working in an active
+   session. The proposal is a local history of compensating commands (Q32), to be
+   decided with Q15.
+5. **The APK declares no Android permissions, not even `INTERNET`**, and IC has
+   no transport of its own. Hormiga's LAN yes was given to Hormiga (Q34).
+
+Wire routes (Q35): waypoints on an edge value would duplicate wires under
+concurrency, because an edge is a whole OR-set element. The lean is per-port
+route content stamped with the partner.
+
+**Received, not yet answered**: two Void Hormiga messages dated today, left in
+*their* root: `…hormiga-adopted-all-three-stages-2026-09-20.md` (stages A–C
+adopted, LAN yes recorded, and a question: should the Roster be fed by the host's
+beacon or only by `Network`?) and `…hormiga-the-console-is-a-shared-surface-2026-09-20.md`
+(offering their source-tagged console to the library). The console bears on this
+research's L2, since each peer becomes a log source.
+
+## 2026-09-20 (second pass): The author rules, and the collaborative canvas gets its foundations
+
+The author answered the first pass the same day: *"i trust your leans"*, with
+three rulings that changed it (all recorded in
+[collaborative canvas](/concepts/collaborative-canvas.md) §0; Q31–Q35 closed).
+
+1. **No hard conflicts for view state.** *"i don't see an issue with last one
+   wins."* **Palabra had already built the right mechanism**: `JoinPolicy`, a
+   read-time projection, where `Pick` keeps both values and every peer shows the
+   same one. It replaced the auto-resolve writes the first pass proposed.
+   `NetOptions::joins` defaults to `presentational_joins()`: `placement`,
+   `content.pos`, `content.size`, `content.collapsed` and `content.route.*` pick,
+   and everything else conflicts. Pinned: a partitioned drag converges silently,
+   and a partitioned text edit still asks on both devices.
+   **On "last":** Palabra refuses wall-clock LWW on principle, and they are right,
+   but causally ordered writes already are last-writer-wins. A Lamport-ordered
+   `Latest` was proposed to them for the concurrent case.
+2. **Selection comes first, for agents too.** *"whoever selected this specific
+   port on the node first, is the one who is doing stuff with it."* Built as
+   `voidmaiz/claims.hpp`: a Lamport clock in presence, then person over agent, then
+   the smaller stamp, then the smaller id. Ports of one node do not contend, and a
+   node claim covers its ports. `gate()` is how an agent's `link` gets refused
+   before it lands.
+3. **Interaction nets are the strongest case, not a trap.** The research
+   bore it out. Every scenario the author named (gone, missing, duplicated, split,
+   transformed, plus overlap) has an answer. The shared-wire case is **HVM2 §5**
+   (Taelin): wires as variables, each end written only by the rewrite consuming
+   its agent. One principal port means one writer per end, and that is no conflict
+   in Palabra's registers. Sent to Palabra as a research ask with the literature
+   (Lafont; DPO parallel independence and Critical Pair Analysis; IPA and
+   Explicit Consistency; Kleppmann's move operation):
+   `../VoidPalabra/MESSAGE_FOR_VOIDPALABRA_maiz-concurrent-rewrites-are-our-strongest-case-2026-09-20.md`.
+
+**Not sent: the derived-id ask to Void Core.** Palabra's own notes record that
+Core deliberately re-mints random ids when a step is *committed* ("committing is
+authoring"), so asking Core to commit with derived ids would contradict a
+decision they made for a reason. The question now lives inside the Palabra
+thread (§3.5, item 4), where the merge-by-reduction design already sits.
+
+**Android LAN.** *"if it doesn't exist, it SHOULD."* Split on the Q30 line: the
+transport is Palabra's (a `voidpalabra_lan` companion target lifted from
+Hormiga's portable sealed session is requested), and the platform facts are ours.
+`voidmaiz/lan.hpp` (target `voidmaiz_lan`, opens no socket) ranks interfaces for
+the LAN (it picks `Wi-Fi 10.0.0.169/24` on the author's machine), encodes a
+**join code** (`"023-47801"` on a /24) so a phone joins from a digits keypad
+without the Java keyboard, and holds Android's **Wi-Fi multicast lock** through
+JNI. The lock is opt-in, because the research found discovery mostly does not
+need it: Android filters incoming *broadcast* but never unicast, so "every device
+beacons, and a hearer answers by unicast" gets phone and desktop together with no
+lock, and only phone to phone needs it. Compiled clean with the NDK for arm64 and
+**not yet run on a device**. The IC APK now declares its four install-time
+permissions (it had none).
+
+**Also built:** presence carries the in-flight half of every canvas gesture
+(`CanvasPresence`: cursor, visible rect, a drag as ONE offset, pending wire,
+marquee, resize, typing with a capped preview, ping) plus participant kind,
+device, a compat token and recent command lines. It is filtered by rule 3 end to
+end: nothing in flight can name a private rune, pinned down to the bytes.
+`Network::tick(…, CollabOut)` carries all of it through a real Palabra session,
+including the mantle-wide crank claim. One bug was found on the way: our first
+attempt read mantle names as object keys, but `mantles` is an array (Core SPEC
+§3.4), and the test caught it.
+
+**For the author:** a [user testing guide](/testing/collaborative-canvas-user-tests.md),
+with 30 scenarios that each name the decision they test, so a verdict lands on a
+number. Most wait on the drawing and the IC integration (stages N0–N4).
+
+Suite: **17/17 gating** (new: `collab_smoke`, `lan_smoke`, and three blocks in
+`net_smoke`), `reduce_conformance` unchanged at 17/25.
+
+## 2026-09-21: Palabra answered, fusion is measured through the whole stack, and the sockets need a home
+
+Palabra's reply (`MESSAGE_FOR_VOIDMAIZ_palabra-concurrent-structure-answered-2026-09-20.md`)
+answered the research with code. They built `links.hpp`: equivalence (the
+partition lattice), capacity and acyclic rules, checked after a merge, reported and
+never auto-repaired. They made **wires as runes plus `"="` fusion** the normative
+encoding. They also built a Lamport `FieldJoin::Latest`, now `placement`'s default,
+`writers()`, a stream envelope, and `Timing::coalesce`. **They declined the socket
+layer**, on the author's lean that Palabra should not own Android networking.
+
+**Adopted the same day.** `presentational_joins()` now declares view state
+`Latest`: the author's "last one wins", with no wall clock. `voidmaiz/wires.hpp`
+reads wire classes out of a projected scene with a local union-find (so a net draws
+in a build with no Palabra) and collapses them into node-to-node wires. Each drawn
+wire carries `via` so gestures compile to attach, detach and fuse, and a class with
+more than two ends is drawn `contested` rather than hidden. It also compiles the
+encoding.
+
+**Measured end to end** (`net_smoke`): the exact shared-wire case, two partitioned
+devices each firing one of two adjacent redexes, healed over a link dropping 30 %,
+converges on the wire **`a2.1–c2.1` that neither device wrote**, with zero anomalies,
+zero conflicts, and Palabra's `check_links` (IC's rules) clean on both. The
+plain-edge contrast, kept so the first block cannot pass vacuously, converges on a
+net missing the wire and reports `link_broken`. One detail matched Palabra
+independently: a removed agent's attachment must be skipped, not counted, or it
+becomes a phantom third end. Evidence sent back:
+`../VoidPalabra/MESSAGE_FOR_VOIDPALABRA_maiz-fusion-measured-through-the-whole-stack-2026-09-21.md`.
+
+**Q36 opened**: where the LAN socket layer lives. Lean: grow `voidmaiz_lan` into it.
+It gates stage N3 only.
+
+Suite: **18/18 gating** (new: `wires_smoke`, and two `net_smoke` blocks),
+`reduce_conformance` unchanged at 17/25.
+
+## 2026-09-21 (second pass): Stage N0. Interaction Combinators collaborates, and a bench to feel it on
+
+**IC now stores its connections as wire runes**, through three library pieces:
+
+- `CanvasStyle::wires`. The canvas compiles every wire gesture (drop, rewire,
+  cut, add-and-link) through a `WireWriter`. It is empty by default (plain edges,
+  unchanged for every other host). `reified_writer` writes segments, attachments
+  and cuts, with each rewire still one batch.
+- `reduce::to_net(const Scene&)`, so a host reduces what it draws: the collapsed
+  scene, not mantle JSON that now holds wire runes.
+- `compile_upgrade`, a one-time conversion of plain `i:j` edges (every saved
+  project, and IC's starter net) into wire runes. Pinned: the net read back after
+  the upgrade equals the net the mantle reader read before it.
+
+IC's rewrite step is the interesting part. Consumed agents are removed and new
+ones minted (names scoped by device), and **every boundary is inherited by a new
+segment FUSED onto the old wire**. An annihilation that joins two boundaries just
+fuses their two wires. Nothing shared is edited in place, so two devices' adjacent
+steps compose. That is the result measured in `net_smoke` yesterday, now in the
+app itself.
+
+**Sessions.** IC has Solo, Host and Join roles. A joiner starts with **no mantle
+and no starter net** and `use`s the shared mantle when the first merge brings it
+(E12). The log's actor comes from the profile (E19, it was hard-coded `lafont`).
+There is a status pill, `CanvasNet` selection marks, and **remote changes play
+instead of teleporting**: a merge that removed a facing pair and minted agents
+runs the rewrite animation, and anything else tweens (250 ms, per the UI
+decisions). Networking compiles only when `voidmaiz_net` exists (`IC_NET`), so the
+solo app and the Android build are unchanged. The APK builds, with the four
+permissions confirmed in the package.
+
+**The duo bench** (`interaction_combinators_duo`): two windows in one process,
+each its own IC with its own Core, replica and Palabra session, joined by an
+in-memory link with latency, loss and a partition switch. Two Dear ImGui contexts
+(1.92's GLFW backend supports them). It needs no sockets, so it exists before Q36.
+**`--selftest`** drives the real app code in hidden windows: the joiner
+converges, a remote step follows, two steps fired on *different* pairs while
+partitioned heal into one valid net, and reducing to normal form ends identical,
+with zero anomalies, conflicts or broken wires throughout (17/17). Launched
+visibly and screenshotted: both windows render the same net, "in sync with 1".
+Two defects were found that way and fixed: the colour dot is a glyph the bundled
+font lacks (now drawn), and the windows assumed an 1840-px screen (now half the
+monitor's work area each).
+
+**For the author:** the testing guide's N0 row is *ready*, with launch steps and
+a new scenario (P1, work apart then meet). C1, C3, C5 and B4 are runnable on the
+bench, without the N1 drawing.
+
+Suite: Void Maiz **18/18 gating**, `reduce_conformance` unchanged at 17/25; duo
+selftest 17/17.

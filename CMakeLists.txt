@@ -110,8 +110,10 @@ add_library(voidmaiz STATIC
   src/embed/embed.cpp
   src/project/project.cpp
   src/gesture/gesture.cpp
+  src/gesture/wires.cpp
   src/touch/touch.cpp
   src/presence/presence.cpp
+  src/presence/claims.cpp
   src/action/action.cpp
   src/usergraph/usergraph.cpp
   src/allomone/host_predicates.cpp
@@ -133,6 +135,20 @@ endif()
 target_link_libraries(voidmaiz PUBLIC "${VOIDCORE_LIBRARY}")
 if(NOT MSVC)
   target_compile_options(voidmaiz PRIVATE -Wall -Wextra)
+endif()
+
+# Platform facts for LAN discovery (okf/concepts/collaborative-canvas.md, E24-E30):
+# addresses, the join code, and Android's Wi-Fi multicast lock. Opens no socket
+# (the transport is Void Palabra's). Its own target so an application that never
+# networks links no socket library.
+add_library(voidmaiz_lan STATIC src/lan/lan.cpp)
+target_include_directories(voidmaiz_lan PUBLIC include)
+target_compile_features(voidmaiz_lan PUBLIC cxx_std_20)
+if(WIN32)
+  target_link_libraries(voidmaiz_lan PUBLIC iphlpapi ws2_32)
+endif()
+if(NOT MSVC)
+  target_compile_options(voidmaiz_lan PRIVATE -Wall -Wextra)
 endif()
 
 # ── The reduce executor (application-side component; the canvas never calls it)
@@ -324,6 +340,21 @@ add_test(NAME touch_usergraph_smoke COMMAND maiz_touch_usergraph_smoke)
 add_executable(maiz_presence_smoke tests/presence_smoke.cpp)
 target_link_libraries(maiz_presence_smoke PRIVATE voidmaiz_allomone)
 add_test(NAME presence_smoke COMMAND maiz_presence_smoke)
+
+# The collaborative canvas, UI-free half: in-flight gestures in presence, and
+# first-to-select claims for people and agents alike. No socket, no Palabra.
+add_executable(maiz_collab_smoke tests/collab_smoke.cpp)
+target_link_libraries(maiz_collab_smoke PRIVATE voidmaiz)
+add_test(NAME collab_smoke COMMAND maiz_collab_smoke)
+
+# Connections as wire runes: concurrent rewires commute (collaborative-canvas §4.2).
+add_executable(maiz_wires_smoke tests/wires_smoke.cpp)
+target_link_libraries(maiz_wires_smoke PRIVATE voidmaiz_reduce)
+add_test(NAME wires_smoke COMMAND maiz_wires_smoke)
+
+add_executable(maiz_lan_smoke tests/lan_smoke.cpp)
+target_link_libraries(maiz_lan_smoke PRIVATE voidmaiz_lan)
+add_test(NAME lan_smoke COMMAND maiz_lan_smoke)
 
 # Stage C: real Cores syncing through Void Palabra over an in-memory lossy wire.
 # Only when Palabra is present — the same condition as the target itself.

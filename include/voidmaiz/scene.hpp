@@ -192,6 +192,14 @@ struct SceneWire {
     bool is_value = false;
     bool active = false;   // host-set after projection (e.g. a rule-bearing
                            // active pair); the canvas renders it emphasized
+    /* Set by collapse_wires (voidmaiz/wires.hpp) when this drawn wire stands for
+     * a class of WIRE RUNES rather than a stored edge: the class representative's
+     * name. Empty for an ordinary edge. A gesture on such a wire compiles to
+     * attach/detach/fuse on its segments, never to link/unlink. */
+    std::string via;
+    /* A wire class with more than two ends (a merge broke "a wire has two ends"):
+     * drawn so the damage is visible, and marked so the canvas can say so. */
+    bool contested = false;
 };
 
 struct Scene {

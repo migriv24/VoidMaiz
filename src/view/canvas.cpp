@@ -19,6 +19,33 @@
 
 namespace maiz {
 
+namespace {
+
+/* Wire gestures compile through the host's WireWriter when it set one (wire
+ * runes), else as plain edges. Always ONE command: a rewire is one undo frame. */
+std::string write_unlink(const CanvasStyle& st, const SceneWire& w) {
+    if (!st.wires) return compile_unlink(w);
+    return compile_batch(st.wires.unlink(w));
+}
+
+std::vector<std::string> write_link_cmds(const CanvasStyle& st, const PortRef& from,
+                                         const PortRef& to) {
+    if (!st.wires) return {compile_link(from, to)};
+    return st.wires.link(from, to);
+}
+
+std::string write_rewire(const CanvasStyle& st, const std::vector<SceneWire>& unlinks,
+                         const PortRef& from, const PortRef& to) {
+    if (!st.wires) return compile_rewire(unlinks, from, to);
+    std::vector<std::string> cmds;
+    for (const auto& w : unlinks)
+        for (auto& c : st.wires.unlink(w)) cmds.push_back(std::move(c));
+    for (auto& c : st.wires.link(from, to)) cmds.push_back(std::move(c));
+    return compile_batch(cmds);
+}
+
+} // namespace
+
 CanvasTheme CanvasTheme::dark() {
     CanvasTheme t;
     t.canvas_bg = IM_COL32(24, 24, 28, 255);
@@ -1331,13 +1358,13 @@ CanvasIO edit_canvas(const char* str_id, const Scene& scene, EditorState& ed,
                 if (v == WireVerdict::Linguine && to.port != 0)
                     if (const SceneWire* occ = wire_into(scene, to.node, to.port))
                         add_unlink(*occ); // an input holds one wire: rewire
-                out.commands.push_back(compile_rewire(unlinks, from, to));
+                out.commands.push_back(write_rewire(style, unlinks, from, to));
                 linked = true;
             }
         }
         // a detached wire dropped on nothing (or an invalid port) is removed
         if (!linked && !same_as_detached && ed.wire_detach)
-            out.commands.push_back(compile_unlink(ed.detached));
+            out.commands.push_back(write_unlink(style, ed.detached));
         // a FRESH wire dropped on empty canvas offers a quick add-and-link:
         // the add box opens at the drop point; the pick mints the node AND
         // wires it back to the dragged port (one batch, one undo frame)
@@ -1445,10 +1472,10 @@ CanvasIO edit_canvas(const char* str_id, const Scene& scene, EditorState& ed,
                 if (check_wire(src, dst) == WireVerdict::Linguine && !from.is_output &&
                     from.port != 0)
                     std::swap(from, to); // an aux input is fed BY the new principal
-                out.commands.push_back(
-                    compile_batch({"rune new " + picked->glyph + " " + name,
-                                   compile_move(name, ed.add_x, ed.add_y),
-                                   compile_link(from, to)}));
+                std::vector<std::string> cmds = {"rune new " + picked->glyph + " " + name,
+                                                 compile_move(name, ed.add_x, ed.add_y)};
+                for (auto& c : write_link_cmds(style, from, to)) cmds.push_back(std::move(c));
+                out.commands.push_back(compile_batch(cmds));
             } else {
                 out.commands.push_back(compile_add(picked->glyph, name, ed.add_x, ed.add_y));
             }
@@ -1739,7 +1766,7 @@ CanvasIO edit_canvas(const char* str_id, const Scene& scene, EditorState& ed,
         } else if (wire_target) {
             if (context_menu) ImGui::Separator();
             if (ImGui::MenuItem("unlink"))
-                out.commands.push_back(compile_unlink(*wire_target));
+                out.commands.push_back(write_unlink(style, *wire_target));
         } else if (palette && !palette->entries.empty()) {
             if (context_menu) ImGui::Separator();
             if (ImGui::BeginMenu("add")) {

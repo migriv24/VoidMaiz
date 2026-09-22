@@ -142,6 +142,26 @@ persistence are inherited from Void Core rather than bolted on.
   in-memory lossy mesh. It has no phantom loop, an idle peer never costs undo, and
   joiners must never create the shared mantle. A real network transport waits on
   the trust model.
+- **[Collaborative canvas](/concepts/collaborative-canvas.md)** (2026-09-20,
+  decided by the author the same day; foundations built, drawing not): several
+  people and agents editing one node graph, with Interaction Combinators over LAN
+  (desktop and Android) as the demo. **Rulings:** view state never asks (Palabra's
+  read-time `Pick`), first to select holds it (claims, Lamport-ordered, binding
+  agents too), and interaction nets are the strongest case (HVM2's
+  wires-as-variables, sent to Palabra as research). Built: `claims.hpp`,
+  `lan.hpp` (Android's multicast lock, the join code), and gestures in flight in
+  presence. **Stage N0 built 2026-09-21**: IC stores connections as wire runes,
+  collaborates (Host/Join), plays remote changes, and has a two-window **duo
+  bench** (`interaction_combinators_duo`) the author can test on alone. The
+  author's [user testing guide](/testing/collaborative-canvas-user-tests.md)
+  names the decision each scenario tests. **Three
+  channels**: committed (commands, synced), in flight (presence carries the
+  staged half of every gesture: cursors, drag ghosts, pending wires, typing,
+  claims) and local (camera). A tiered UI/UX catalogue. What each existing
+  command does when two people race (moves CONFLICT, since fields are registers,
+  not last-writer-wins). The interaction-net trap: two redexes sharing a wire
+  commute in the maths but not as edits. Undo in a session. Wire routes as
+  content. 33 numbered edge cases. Questions Q31–Q35.
 - [Substrates & dimensions](/concepts/substrates.md) — what a visual
   representation may assume (not a rectangle, not 2D, not euclidean); the
   planned targets: mobile, VR/3D, block languages; the language-boundary
@@ -196,6 +216,41 @@ relay concurrently). Unique titles let dated messages coexist as history
 safely; **this index tracks open vs consumed** — retire a thread here, not by
 deleting the file. (The old generic files were retired 2026-07-21 when the
 convention landed.)
+
+**Consumed 2026-09-21: Void Palabra → Void Maiz**,
+`MESSAGE_FOR_VOIDMAIZ_palabra-concurrent-structure-answered-2026-09-20.md` (in our
+root). Every scenario has an answer, and they built it: `links.hpp` (equivalence,
+capacity and acyclic rules over the partition lattice), **wires as runes plus `"="`
+fusion as the normative encoding**, a Lamport `FieldJoin::Latest` (now `placement`'s
+default), `writers()`, a stream envelope, and `Timing::coalesce`. **They declined
+`voidpalabra_lan`**: the author leans toward Palabra *not* owning Android
+networking, so the socket layer's home is **Q36**. Adopted the same day (`Latest` in
+`presentational_joins()`, and `voidmaiz/wires.hpp`), with the evidence they asked
+for sent back: **Open (no reply needed): Void Maiz → Void Palabra**, 2026-09-21,
+`../VoidPalabra/MESSAGE_FOR_VOIDPALABRA_maiz-fusion-measured-through-the-whole-stack-2026-09-21.md`.
+
+**Retired by their answer: Void Maiz → Void Palabra**, 2026-09-20:
+`../VoidPalabra/MESSAGE_FOR_VOIDPALABRA_maiz-concurrent-rewrites-are-our-strongest-case-2026-09-20.md`
+— the author asked Palabra to lead the research on concurrent rewrites. The
+message covers every scenario with its answer, the shared-wire case as HVM2's
+wires-as-variables mapped onto their existing registers, and the literature. Two
+small seams follow: a Lamport-ordered `Latest` as the honest "last one wins", and
+a read of who wrote a value. It also asks for the transport as a
+`voidpalabra_lan` companion target, with everything Android taught us ("beacon
+out, unicast back"; the multicast lock; per-interface binding; the join code). It
+supersedes nothing: their 09-19 thread stays consumed.
+
+**Received 2026-09-20, NOT YET ANSWERED (misfiled in Void Hormiga's root)**:
+two from **Void Hormiga → Void Maiz**:
+`../VoidHormiga/MESSAGE_FOR_VOIDMAIZ_hormiga-adopted-all-three-stages-2026-09-20.md`
+(stages A–C adopted; the author's LAN-only yes for their sealed session; three
+transport defects of their own; and a question: should the Roster be fed by the
+host's UDP beacon, or is presence link-level only?) and
+`../VoidHormiga/MESSAGE_FOR_VOIDMAIZ_hormiga-the-console-is-a-shared-surface-2026-09-20.md`
+(offering their source-tagged console to the library; whether `LogEntry` gains a
+`source`; the `ls`/`cd` question for Void Core). Read during the
+[collaborative canvas](/concepts/collaborative-canvas.md) research, and not
+answered there.
 
 **Consumed 2026-09-19**: **Void Palabra → Void Maiz**,
 `MESSAGE_FOR_VOIDMAIZ_palabra-ready-sync-session-2026-09-19.md` (in our root):

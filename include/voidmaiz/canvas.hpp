@@ -19,6 +19,7 @@
 #include "voidmaiz/gesture.hpp" // BlockMetrics (the snap/adjacency conventions)
 #include "voidmaiz/presence.hpp" // CanvasNet (networking, the half a canvas shows)
 #include "voidmaiz/scene.hpp"
+#include "voidmaiz/wires.hpp" // WireWriter
 
 #include "imgui.h"
 
@@ -79,6 +80,11 @@ struct CanvasStyle {
     float port_hit_radius = 9.0f;    // px, screen-space minimum for port grabs
     bool hover_tooltips = true;      // touch shells disable: the pointer never
                                      // leaves, so a tap's tooltip would linger
+    /* How a wire gesture is WRITTEN. Empty (the default): plain `link`/`unlink`
+     * edges, exactly as always. A host that stores connections as wire runes
+     * (voidmaiz/wires.hpp: concurrent rewires then commute) passes
+     * reified_writer(...) and every wire gesture compiles through it. */
+    WireWriter wires;
     BlockMetrics block;              // block-shape geometry + snap thresholds
                                      // (shared with the UI-free snap compiler)
 };

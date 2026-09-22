@@ -43,8 +43,23 @@ int rank(vps::ContentState s) {
 
 } // namespace
 
+voidpalabra::JoinPolicy presentational_joins() {
+    voidpalabra::JoinPolicy p = voidpalabra::JoinPolicy::core_defaults();
+    // Latest (Palabra SPEC 5.10): the Lamport-latest write, the same on every
+    // peer, with no wall clock. The author's "last one wins", honestly. View
+    // state only: a peer minting huge counters would win every Latest field.
+    using FJ = voidpalabra::FieldJoin;
+    p.fields["placement"] = FJ::Latest;
+    p.fields["content.pos"] = FJ::Latest;
+    p.fields["content.size"] = FJ::Latest;
+    p.fields["content.collapsed"] = FJ::Latest;
+    p.fields["content.route.*"] = FJ::Latest;
+    return p;
+}
+
 Network::Network(Core& core, voidpalabra::Replica replica, NetOptions options)
     : core_(core), replica_(std::move(replica)), opt_(std::move(options)) {
+    replica_.set_policy(opt_.joins);
     if (settings_.self.id.empty()) settings_.self.id = replica_.id();
     roster_.set_self(replica_.id());
     observe_local(true); // the document as it stands IS this device's starting state
@@ -58,10 +73,13 @@ void Network::note(const char* level, const std::string& link, std::string text)
 
 void Network::rebuild_index(const std::string& state_json) {
     index_.clear();
+    mantles_.clear();
     Json root(cJSON_Parse(state_json.c_str()));
     const cJSON* mantles = cJSON_GetObjectItemCaseSensitive(root.p, "mantles");
     const cJSON* m = nullptr;
     cJSON_ArrayForEach(m, mantles) {
+        if (const cJSON* nm = cJSON_GetObjectItemCaseSensitive(m, "name"); cJSON_IsString(nm))
+            mantles_.insert(nm->valuestring);
         const cJSON* runes = cJSON_GetObjectItemCaseSensitive(m, "runes");
         const cJSON* r = nullptr;
         cJSON_ArrayForEach(r, runes) {
@@ -269,14 +287,26 @@ void Network::disconnect(const std::string& link, NetMillis now) {
 
 void Network::tick(NetMillis now, const std::vector<std::string>& selection_ids,
                    const Surfaces& surfaces) {
+    tick(now, selection_ids, surfaces, CollabOut{});
+}
+
+void Network::tick(NetMillis now, const std::vector<std::string>& selection_ids,
+                   const Surfaces& surfaces, const CollabOut& collab) {
     observe_local(false);
 
-    // presence: composed with the SENDER's switches, from this device's own view
-    Scene sel;
-    for (const auto& id : selection_ids)
-        if (auto it = index_.find(id); it != index_.end()) sel.nodes.push_back(it->second);
+    // presence: composed with the SENDER's switches, from this device's own view.
+    // Everything in flight is vouched for against the whole index, not only the
+    // selection: a wire gesture or a claim may name a rune nobody has selected.
+    Scene known;
+    known.nodes.reserve(index_.size());
+    for (const auto& [id, n] : index_) known.nodes.push_back(n);
     PresenceState mine = compose_presence(settings_.self, selection_ids, surfaces, settings_.send,
-                                          sel, opt_.share);
+                                          known, opt_.share, collab);
+    // mantle-wide claims (IC's crank): the mantle must exist here and may leave
+    for (const Claim& cl : collab.claims)
+        if (mantles_.count(cl.rune) && !index_.count(cl.rune) &&
+            (!opt_.share_mantle || opt_.share_mantle(cl.rune)))
+            mine.claims.push_back(cl);
     std::string payload = presence_to_json(mine);
     bool stale = presence_sent_at_ < 0 || now - presence_sent_at_ >= opt_.timing.presence_ttl / 3;
     if (payload != last_presence_ || stale) {

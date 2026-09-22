@@ -59,6 +59,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -77,6 +78,21 @@ struct NetFiles {
     std::function<void(const std::string& address, const std::string& bytes)> store;
 };
 
+/* How each field resolves when two devices write it at once — Palabra's
+ * JoinPolicy, which is a READ-TIME projection: both values stay in the document,
+ * every peer shows the same one, and convergence never depends on it.
+ *
+ * The canvas's view state gets `Latest` (the Lamport-latest write; Palabra
+ * SPEC 5.10, built 2026-09-20 at our request): `placement`, and the content keys the
+ * gesture compiler writes for a node's position, size, collapse and hand-shaped
+ * route (`content.pos`, `content.size`, `content.collapsed`, `content.route.*`).
+ * Two people dragging one node then CONVERGE instead of raising a question
+ * nobody can meaningfully answer ("which coordinates?") — the author's call,
+ * 2026-09-20: hard conflicts slow people down. Everything else keeps Palabra's
+ * default, Conflict: a label or a value somebody typed is never silently lost.
+ * collaborative-canvas.md §6. */
+voidpalabra::JoinPolicy presentational_joins();
+
 struct NetOptions {
     /* REQUIRED. Called with the replica's bytes whenever they must be saved —
      * after every local observation that recorded something, BEFORE any frame
@@ -89,6 +105,8 @@ struct NetOptions {
     std::function<bool(const std::string& mantle)> share_mantle;
 
     NetFiles files;
+    /* Per-field resolution. Default: view state picks, everything else conflicts. */
+    voidpalabra::JoinPolicy joins = presentational_joins();
     voidpalabra::sync::Timing timing;
     voidpalabra::sync::Limits limits;
 
@@ -160,6 +178,13 @@ class Network {
      * (selection_ids(scene, ed.selection)); `surfaces` is this frame's registry. */
     void tick(NetMillis now, const std::vector<std::string>& selection_ids,
               const Surfaces& surfaces);
+    /* The same, plus the collaborative canvas's in-flight half: cursors, gesture
+     * ghosts, claims, recent commands (okf/concepts/collaborative-canvas.md). It
+     * is filtered like the selection — nothing in it can name a rune the share
+     * filter keeps local. Feed every peer's PresenceState from roster() into your
+     * Claims::observe so first-to-select stays honest. */
+    void tick(NetMillis now, const std::vector<std::string>& selection_ids,
+              const Surfaces& surfaces, const CollabOut& collab);
 
     /* Cautious file transfer: the user chose to download this one. */
     void fetch(const std::string& address, NetMillis now);
@@ -216,6 +241,7 @@ class Network {
 
     std::map<std::string, Link> links_;
     std::map<std::string, SceneNode> index_; // rune id → what the ShareFilter reads
+    std::set<std::string> mantles_;          // mantle names the Core holds
     std::string last_state_;                 // the export last observed
     std::string last_presence_;
     NetMillis presence_sent_at_ = -1;

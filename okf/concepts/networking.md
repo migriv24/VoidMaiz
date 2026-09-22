@@ -171,6 +171,11 @@ sake. It changes **where decisions live**:
 | **B** | profile presentation, member list, avatars, the Networking settings section (sender and receiver groups, cautious files) | **built 2026-09-18** |
 | **C** | `voidmaiz_net`: one replica, one Palabra session per link, the observe → persist → share → merge → splice loop, presence through Palabra's ephemeral channel into the Roster | **built 2026-09-19**; a real network transport waits on the trust model |
 
+**Next, researched and not built:** the canvas in depth, meaning gestures in
+flight over presence, reduction under concurrency, undo in a session and
+routes as content. See [collaborative canvas](/concepts/collaborative-canvas.md)
+(2026-09-20).
+
 Stages A and B live in `voidmaiz` and `voidmaiz_view` and link nothing new. **An
 application that never networks pays nothing**: every entry point is optional,
 and `edit_canvas` behaves exactly as before when no `CanvasNet` is passed. Only

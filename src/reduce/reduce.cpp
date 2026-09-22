@@ -287,6 +287,30 @@ Net to_net(std::string_view mantle_json, const std::map<std::string, int>& signa
     return net;
 }
 
+Net to_net(const Scene& scene, const std::map<std::string, int>& signatures) {
+    Net net;
+    for (const auto& n : scene.nodes) {
+        Agent a;
+        a.id = n.name;
+        a.glyph = n.glyph;
+        auto sig = signatures.find(a.glyph);
+        a.arity = sig == signatures.end() ? 0 : sig->second;
+        a.tags = n.tags;
+        net.add(std::move(a));
+    }
+    for (const auto& w : scene.wires) {
+        if (w.contested)
+            throw NetError("wire " + w.from + "-" + w.to +
+                           " belongs to a wire with more than two ends (a merge broke it)");
+        if (w.from_port < 0 || w.to_port < 0)
+            throw NetError("wire " + w.from + "-" + w.to + " relation '" + w.relation +
+                           "' is not \"i:j\" — the strict adapter never guesses ports");
+        net.connect({w.from, w.from_port}, {w.to, w.to_port});
+    }
+    net.check();
+    return net;
+}
+
 // ── the reducer ──────────────────────────────────────────────────────────────
 
 namespace {

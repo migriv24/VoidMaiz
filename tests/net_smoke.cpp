@@ -11,6 +11,9 @@
  */
 #include "voidmaiz/net.hpp"
 #include "voidmaiz/project.hpp"
+#include "voidmaiz/wires.hpp"
+#include "voidpalabra/links.hpp"
+#include "voidmaiz/project.hpp"
 
 #include "voidpalabra/canonical.hpp"
 
@@ -53,6 +56,7 @@ struct Device {
     int persists = 0;
     std::map<std::string, std::string> files;
     std::vector<std::string> selection; // rune ids
+    CollabOut collab;                   // the canvas's in-flight half
     Surfaces surfaces;
     std::unique_ptr<Network> net;
     std::vector<NetNote> notes;
@@ -125,7 +129,7 @@ struct Device {
         surfaces.begin_frame();
         surfaces.declare("canvas", "canvas");
         surfaces.focus("canvas");
-        net->tick(now, selection, surfaces);
+        net->tick(now, selection, surfaces, collab);
         for (auto& n : net->take_notes()) notes.push_back(n);
     }
 };
@@ -320,6 +324,208 @@ int main() {
         const Peer* seen = b.net->roster().find(a.net->replica().id());
         CHECK(seen != nullptr);
         CHECK(seen && seen->state.selection == std::vector<std::string>{a.id_of("public-note")});
+    }
+
+    // ── two rewrites sharing a wire commute when the wire is a class ────────
+    // collaborative-canvas §4.2 and Palabra's normative answer (SPEC §5.11): the
+    // exact case that loses a wire under plain edges, run through the whole stack.
+    {
+        Device a("ana", "replica-ana-0000000061"), b("bo", "replica-bo-00000000062", false, false);
+        const char* kGamma = R"({"glyph":"gamma","label":"gamma","fields":[]})";
+        const char* kWire = R"({"glyph":"wire","label":"wire","fields":[]})";
+        for (Device* d : {&a, &b}) {
+            d->core.register_glyph(kGamma);
+            d->core.register_glyph(kWire);
+        }
+        WireEncoding enc;
+        NetMillis now = 1000;
+        Wire wire;
+        wire.drop = 0.3;
+        a.net->connect("bo", now);
+        b.net->connect("ana", now);
+        for (const char* n : {"a", "b", "c", "d"}) a.core.dispatch(std::string("rune new gamma ") + n);
+        a.core.dispatch(compile_wire(enc, "w-ab", {"a", 0}, {"b", 0})); // redex 1
+        a.core.dispatch(compile_wire(enc, "w-cd", {"c", 0}, {"d", 0})); // redex 2
+        a.core.dispatch(compile_wire(enc, "w-ac", {"a", 1}, {"c", 1})); // the SHARED wire
+        pump({&a, &b}, now, 80, wire);
+        b.adopt();
+        CHECK(fingerprint(a.core) == fingerprint(b.core));
+
+        // partition, then each device fires ONE of the two redexes
+        a.net->disconnect("bo", now);
+        b.net->disconnect("ana", now);
+        for (const char* cmd : {"rm a", "rm b", "rune new gamma a2"}) a.core.dispatch(cmd);
+        a.core.dispatch(compile_segment(enc, fresh_wire_name("ana", 1)));
+        a.core.dispatch(compile_attach(fresh_wire_name("ana", 1), {"a2", 1}));
+        a.core.dispatch(compile_fuse(enc, fresh_wire_name("ana", 1), "w-ac"));
+        for (const char* cmd : {"rm c", "rm d", "rune new gamma c2"}) b.core.dispatch(cmd);
+        b.core.dispatch(compile_segment(enc, fresh_wire_name("bo", 1)));
+        b.core.dispatch(compile_attach(fresh_wire_name("bo", 1), {"c2", 1}));
+        b.core.dispatch(compile_fuse(enc, fresh_wire_name("bo", 1), "w-ac"));
+
+        // heal over a lossy wire
+        pump({&a, &b}, now, 5, wire);
+        a.net->connect("bo", now);
+        b.net->connect("ana", now);
+        pump({&a, &b}, now, 200, wire);
+
+        CHECK(fingerprint(a.core) == fingerprint(b.core)); // one document
+        for (Device* d : {&a, &b}) {
+            Scene drawn = collapse_wires(project_scene(d->core), enc);
+            // the wire nobody wrote, read from what both wrote
+            bool joined = false;
+            for (const auto& w : drawn.wires)
+                joined |= ((w.from == "a2" && w.to == "c2") || (w.from == "c2" && w.to == "a2")) &&
+                          w.from_port == 1 && w.to_port == 1 && !w.contested;
+            CHECK(joined);
+            CHECK(d->net->anomalies().empty());
+            CHECK(d->net->conflicts().empty());
+
+            // Palabra's normative check over the same document
+            voidpalabra::LinkRules ic;
+            ic.equivalence = {enc.fuse};
+            voidpalabra::Capacity port;
+            port.name = "one wire per port";
+            port.slot = voidpalabra::Slot::from_port;
+            port.max = 1;
+            voidpalabra::Capacity ends;
+            ends.name = "a wire has two ends";
+            ends.slot = voidpalabra::Slot::to;
+            ends.max = 2;
+            ends.through_equivalence = true;
+            ic.capacity = {port, ends};
+            cJSON* st = cJSON_Parse(d->core.export_state().c_str());
+            CHECK(voidpalabra::check_links(st, ic).empty());
+            cJSON_Delete(st);
+        }
+    }
+
+    // ── …and the same case with PLAIN edges loses the wire (the contrast) ────
+    // Kept so the test above cannot pass vacuously: this is the failure it fixes.
+    {
+        Device a("ana", "replica-ana-0000000071"), b("bo", "replica-bo-00000000072", false, false);
+        for (Device* d : {&a, &b}) d->core.register_glyph(R"({"glyph":"gamma","label":"gamma","fields":[]})");
+        NetMillis now = 1000;
+        Wire wire;
+        a.net->connect("bo", now);
+        b.net->connect("ana", now);
+        for (const char* n : {"a", "b", "c", "d"}) a.core.dispatch(std::string("rune new gamma ") + n);
+        a.core.dispatch("link a b --relation 0:0");
+        a.core.dispatch("link c d --relation 0:0");
+        a.core.dispatch("link a c --relation 1:1");
+        pump({&a, &b}, now, 60, wire);
+        b.adopt();
+        a.net->disconnect("bo", now);
+        b.net->disconnect("ana", now);
+        for (const char* cmd : {"rm a", "rm b", "rune new gamma a2", "link a2 c --relation 1:1"})
+            a.core.dispatch(cmd);
+        for (const char* cmd : {"rm c", "rm d", "rune new gamma c2", "link a c2 --relation 1:1"})
+            b.core.dispatch(cmd);
+        pump({&a, &b}, now, 5, wire);
+        a.net->connect("bo", now);
+        b.net->connect("ana", now);
+        pump({&a, &b}, now, 80, wire);
+
+        CHECK(fingerprint(a.core) == fingerprint(b.core)); // it converges…
+        Scene s = project_scene(a.core);
+        bool joined = false;
+        for (const auto& w : s.wires)
+            joined |= (w.from == "a2" && w.to == "c2") || (w.from == "c2" && w.to == "a2");
+        CHECK(!joined);                          // …on a net missing the wire
+        CHECK(!a.net->anomalies().empty());      // and says so: link_broken
+    }
+
+    // ── two people drag one node: they converge, nobody is asked ────────────
+    {
+        Device a("ana", "replica-ana-0000000051"), b("bo", "replica-bo-00000000052", false, false);
+        NetMillis now = 1000;
+        Wire wire;
+        a.net->connect("bo", now);
+        b.net->connect("ana", now);
+        a.core.dispatch("rune new card node");
+        a.core.dispatch("set node text hello");
+        pump({&a, &b}, now, 40, wire);
+        b.adopt();
+
+        // partition: each moves the node, and each edits the TEXT differently
+        a.net->disconnect("bo", now);
+        b.net->disconnect("ana", now);
+        a.core.dispatch("setjson node pos [10,20]");
+        b.core.dispatch("setjson node pos [300,400]");
+        a.core.dispatch("set node text ana-wrote-this");
+        b.core.dispatch("set node text bo-wrote-this");
+        pump({&a, &b}, now, 5, wire);
+        a.net->connect("bo", now);
+        b.net->connect("ana", now);
+        pump({&a, &b}, now, 60, wire);
+
+        CHECK(fingerprint(a.core) == fingerprint(b.core)); // one document
+        // the position is view state: picked, identically on both, no question
+        // the text is content: still a question, on both
+        auto rows = a.net->conflicts();
+        bool pos_q = false, text_q = false;
+        for (const auto& r : rows) {
+            pos_q |= r.field == "content.pos";
+            text_q |= r.field == "content.text";
+        }
+        CHECK(!pos_q);
+        CHECK(text_q);
+        CHECK(b.net->conflicts().size() == rows.size());
+    }
+
+    // ── the collaborative canvas: gestures in flight cross a real session ────
+    {
+        Device a("ana", "replica-ana-0000000041"), b("bo", "replica-bo-00000000042", false, false);
+        NetMillis now = 1000;
+        Wire wire;
+        a.net->connect("bo", now);
+        b.net->connect("ana", now);
+        a.core.dispatch("rune new card gam1");
+        a.core.dispatch("rune new card secret");
+        a.core.dispatch("tag secret +private");
+        pump({&a, &b}, now, 40, wire);
+        b.adopt();
+        std::string gam1 = a.id_of("gam1"), secret = a.id_of("secret");
+
+        // ana drags a wire out of gam1's principal and has claimed that port;
+        // she also has a claim on the private rune and on the mantle (the crank)
+        CanvasPresence c;
+        c.surface = "canvas";
+        c.has_cursor = true;
+        c.cursor_x = 300;
+        c.cursor_y = 140;
+        c.gesture = CanvasGesture::Wire;
+        c.wire_rune = gam1;
+        c.wire_port = 0;
+        a.collab.canvas = {c};
+        a.collab.claims = {{gam1, "port:0", 4}, {secret, "", 5}, {"team", "crank", 6}};
+        a.collab.clock = 6;
+        pump({&a, &b}, now, 20, wire);
+
+        const Peer* seen = b.net->roster().find(a.net->replica().id());
+        CHECK(seen != nullptr);
+        if (seen) {
+            CHECK(seen->state.clock == 6);
+            CHECK(seen->state.canvas.size() == 1);
+            CHECK(!seen->state.canvas.empty() && seen->state.canvas[0].gesture == CanvasGesture::Wire &&
+                  seen->state.canvas[0].wire_rune == gam1 && seen->state.canvas[0].cursor_x == 300);
+            // the port claim and the crank arrive; the private rune's claim does not
+            bool port = false, crank = false, leaked = false;
+            for (const auto& cl : seen->state.claims) {
+                port |= cl.rune == gam1 && cl.part == "port:0";
+                crank |= cl.rune == "team" && cl.part == "crank";
+                leaked |= cl.rune == secret;
+            }
+            CHECK(port && crank && !leaked);
+        }
+
+        // now the wire names the private rune: the gesture is withheld, the cursor is not
+        a.collab.canvas[0].wire_rune = secret;
+        pump({&a, &b}, now, 20, wire);
+        seen = b.net->roster().find(a.net->replica().id());
+        CHECK(seen && !seen->state.canvas.empty() &&
+              seen->state.canvas[0].gesture == CanvasGesture::None &&
+              seen->state.canvas[0].has_cursor);
     }
 
     // ── presence is keyed on the session's identity, not the payload's ───────

@@ -44,6 +44,7 @@
 #include "voidmaiz/scene.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <string>
 #include <string_view>
@@ -148,11 +149,70 @@ const SceneNode* find_by_id(const Scene& scene, std::string_view rune_id);
  * The WIRE PAYLOAD. Its content is Void Maiz's vocabulary (surfaces, rune ids,
  * marks); carrying it is the transport's job, as opaque bytes, on a channel
  * that never enters history. */
+/* ── the collaborative canvas (okf/concepts/collaborative-canvas.md) ──────────
+ * Presence carries the IN-FLIGHT half of every canvas gesture: the part the
+ * canvas already stages locally before it commits one command. Nothing here is
+ * ever merged or persisted; a gesture that never commits changed nothing, which
+ * is why showing it to peers does not break commitment 2.
+ *
+ * Geometry appears ONLY here, scoped to one canvas surface. SurfaceDecl stays
+ * geometry-free, so a list or a map never has to declare coordinates. */
+enum class CanvasGesture { None, Move, Wire, Marquee, Resize, Typing };
+std::string_view gesture_name(CanvasGesture g);
+bool parse_gesture(std::string_view text, CanvasGesture& out);
+
+struct CanvasPresence {
+    std::string surface;          // the canvas surface id (boxes nest: one per mantle view)
+    bool has_cursor = false;      // false while a phone has no finger down, or withheld
+    float cursor_x = 0, cursor_y = 0;       // WORLD coordinates
+    bool has_view = false;
+    float view_x0 = 0, view_y0 = 0, view_x1 = 0, view_y1 = 0; // visible world rect
+    CanvasGesture gesture = CanvasGesture::None;
+    // Move: ONE offset for the whole selection (the ids are PresenceState::selection)
+    float dx = 0, dy = 0;
+    // Wire: the fixed end (rune id + port index; -1 = none). The free end is the cursor.
+    std::string wire_rune;
+    int wire_port = -1;
+    // Marquee: world rect
+    float mq_x0 = 0, mq_y0 = 0, mq_x1 = 0, mq_y1 = 0;
+    // Typing (and Resize): which rune; Typing adds which field and the staged text
+    std::string field_rune, field_key;
+    std::string preview;          // capped by PresenceLimits::max_preview
+    // A "look here" ripple. `ping_seq` increases per ping so a receiver fires it once.
+    std::uint32_t ping_seq = 0;
+    float ping_x = 0, ping_y = 0;
+};
+
+/* A claim: "I am doing something to this right now." Advisory; the merge never
+ * enforces it. `part` narrows it: "" = the whole rune, "port:<n>", "field:<key>",
+ * or a host word (IC: "crank" on the mantle). FIRST CLAIM WINS, ordered by the
+ * Lamport `stamp` (voidmaiz/claims.hpp), so a claim made after SEEING another
+ * always loses to it — the author's rule: whoever selected this first is the one
+ * doing stuff with it. Agents claim before they assign, exactly like people. */
+struct Claim {
+    std::string rune; // rune id (or mantle id for a mantle-wide claim)
+    std::string part;
+    std::uint64_t stamp = 0;
+};
+
+/* What kind of participant this is. A person outranks an agent (headless.md). */
+enum class Participant { Person, Agent };
+
 struct PresenceState {
     Profile who;
     std::vector<std::string> selection; // rune ids the peer has selected
     std::vector<std::string> surfaces;  // surface ids visible to the peer ("" if withheld)
     std::string focus;                  // the surface they are working in ("" if withheld)
+
+    // ── collaboration (all optional; an old peer's payload simply lacks them) ──
+    Participant kind = Participant::Person;
+    std::string device;                 // "desktop" | "phone" | "tablet" | "headless" | host word
+    std::string compat;                 // opaque: the host's "can we work together" token
+                                        // (IC: app version + reduce-spec hash)
+    std::uint64_t clock = 0;            // the sender's Lamport clock (claims.hpp)
+    std::vector<CanvasPresence> canvas; // one per canvas surface the sender has open
+    std::vector<Claim> claims;
+    std::vector<std::string> recent;    // the sender's last few command lines (L2)
 };
 
 /* The SENDER's switches. Enforced where presence is composed, so no receiver
@@ -160,6 +220,11 @@ struct PresenceState {
 struct SharePolicy {
     bool selection = true; // broadcast what I have selected
     bool surfaces = true;  // broadcast which surfaces I have open, and my focus
+    bool cursor = true;    // broadcast my cursor and visible rect on canvases
+    bool gestures = true;  // broadcast drags, wires, marquees in flight
+    bool typing = true;    // broadcast which field I am typing in
+    bool preview = true;   // …and the staged text itself (needs `typing`)
+    bool recent = true;    // broadcast my last few command lines
 };
 
 /* The RECEIVER's switches: what to draw of what others broadcast. Clutter
@@ -191,6 +256,27 @@ PresenceState compose_presence(const Profile& self, const std::vector<std::strin
                                const Surfaces& surfaces, const SharePolicy& policy,
                                const Scene& scene, const ShareFilter& filter);
 
+/* The collaboration half of what this device broadcasts, as the host has it.
+ * compose_presence FILTERS it with the same rules as the selection: a gesture,
+ * typing indicator or claim that names a rune the filter keeps local (or that
+ * the scene does not hold) is dropped, so an in-flight gesture can never leak a
+ * private rune's existence (rule 3). A mantle-wide claim names the scene's
+ * mantle. A recent command line that mentions a private rune is dropped whole. */
+struct CollabOut {
+    Participant kind = Participant::Person;
+    std::string device;
+    std::string compat;
+    std::uint64_t clock = 0;
+    std::vector<CanvasPresence> canvas;
+    std::vector<Claim> claims;
+    std::vector<std::string> recent;
+};
+
+PresenceState compose_presence(const Profile& self, const std::vector<std::string>& selection_ids,
+                               const Surfaces& surfaces, const SharePolicy& policy,
+                               const Scene& scene, const ShareFilter& filter,
+                               const CollabOut& collab);
+
 /* Selection is held by NAME in EditorState (names are what wires and commands
  * use). Presence keys on ids; this is the one conversion, so no host writes it. */
 std::vector<std::string> selection_ids(const Scene& scene, const std::vector<std::string>& names);
@@ -206,6 +292,11 @@ struct PresenceLimits {
     std::size_t max_bytes = 16 * 1024;
     std::size_t max_ids = 512;  // per list
     std::size_t max_str = 256;  // per string
+    std::size_t max_preview = 1024; // a typing preview (staged text)
+    std::size_t max_canvas = 8;     // canvas surfaces per peer
+    std::size_t max_claims = 64;
+    std::size_t max_recent = 8;     // recent command lines
+    double max_coord = 1e7;         // |world coordinate|; beyond it is refused, not clamped
 };
 
 std::string presence_to_json(const PresenceState& state);
