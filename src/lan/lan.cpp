@@ -18,7 +18,12 @@
 #include <ifaddrs.h>
 #include <net/if.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <sys/socket.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <poll.h>
+#include <unistd.h>
 #endif
 
 #if defined(__ANDROID__)
@@ -386,5 +391,312 @@ MulticastLock::MulticastLock(ANativeActivity* activity, const char*) : activity_
 MulticastLock::~MulticastLock() = default;
 
 #endif
+
+// ── sockets ───────────────────────────────────────────────────────────────────
+
+namespace {
+
+#if defined(_WIN32)
+using sock_t = SOCKET;
+const sock_t kBad = INVALID_SOCKET;
+bool winsock_ready() {
+    static bool ok = [] {
+        WSADATA w;
+        return WSAStartup(MAKEWORD(2, 2), &w) == 0; // reference-counted; once is enough
+    }();
+    return ok;
+}
+int last_error() { return WSAGetLastError(); }
+bool would_block(int e) { return e == WSAEWOULDBLOCK || e == WSAEINPROGRESS || e == WSAEALREADY; }
+void close_sock(sock_t s) { closesocket(s); }
+bool set_nonblocking(sock_t s) {
+    u_long on = 1;
+    return ioctlsocket(s, FIONBIO, &on) == 0;
+}
+#else
+using sock_t = int;
+const sock_t kBad = -1;
+bool winsock_ready() { return true; }
+int last_error() { return errno; }
+bool would_block(int e) { return e == EWOULDBLOCK || e == EAGAIN || e == EINPROGRESS || e == EALREADY; }
+void close_sock(sock_t s) { ::close(s); }
+bool set_nonblocking(sock_t s) {
+    int f = fcntl(s, F_GETFL, 0);
+    return f >= 0 && fcntl(s, F_SETFL, f | O_NONBLOCK) == 0;
+}
+#endif
+
+sock_t as_sock(long long v) { return (sock_t)v; }
+long long as_ll(sock_t s) { return s == kBad ? -1 : (long long)s; }
+
+std::string error_text(const char* what) {
+    return std::string(what) + " failed (error " + std::to_string(last_error()) + ")";
+}
+
+sockaddr_in addr_of(Ipv4 a, std::uint16_t port) {
+    sockaddr_in sa{};
+    sa.sin_family = AF_INET;
+    sa.sin_port = htons(port);
+    sa.sin_addr.s_addr = htonl(a.host);
+    return sa;
+}
+
+/* A connected socket is readable-or-writable without blocking? zero timeout. */
+bool writable_now(sock_t s) {
+#if defined(_WIN32)
+    fd_set w, e;
+    FD_ZERO(&w);
+    FD_ZERO(&e);
+    FD_SET(s, &w);
+    FD_SET(s, &e);
+    timeval tv{0, 0};
+    return select(0, nullptr, &w, &e, &tv) > 0 && FD_ISSET(s, &w);
+#else
+    pollfd p{s, POLLOUT, 0};
+    return ::poll(&p, 1, 0) > 0 && (p.revents & POLLOUT);
+#endif
+}
+
+int socket_error(sock_t s) {
+    int err = 0;
+    socklen_t len = sizeof err;
+    getsockopt(s, SOL_SOCKET, SO_ERROR, reinterpret_cast<char*>(&err), &len);
+    return err;
+}
+
+} // namespace
+
+// ── Udp ─────────────────────────────────────────────────────────────────────────
+
+Udp::~Udp() { close(); }
+
+bool Udp::open(std::uint16_t port, std::string* error) {
+    close();
+    if (!winsock_ready()) {
+        if (error) *error = "the socket library did not start";
+        return false;
+    }
+    sock_t s = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (s == kBad) {
+        if (error) *error = error_text("socket");
+        return false;
+    }
+    int on = 1;
+    setsockopt(s, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&on), sizeof on);
+    setsockopt(s, SOL_SOCKET, SO_BROADCAST, reinterpret_cast<const char*>(&on), sizeof on);
+    sockaddr_in sa = addr_of(Ipv4{0}, port); // INADDR_ANY
+    if (::bind(s, reinterpret_cast<sockaddr*>(&sa), sizeof sa) != 0 || !set_nonblocking(s)) {
+        if (error) *error = error_text("bind");
+        close_sock(s);
+        return false;
+    }
+    sock_ = as_ll(s);
+    return true;
+}
+
+void Udp::close() {
+    if (sock_ != invalid_) close_sock(as_sock(sock_));
+    sock_ = invalid_;
+}
+
+bool Udp::send_to(Ipv4 to, std::uint16_t port, const std::string& bytes) {
+    if (!is_open()) return false;
+    sockaddr_in sa = addr_of(to, port);
+    return ::sendto(as_sock(sock_), bytes.data(), (int)bytes.size(), 0,
+                    reinterpret_cast<sockaddr*>(&sa), sizeof sa) == (int)bytes.size();
+}
+
+void Udp::broadcast(std::uint16_t port, const std::string& bytes) {
+    send_to(Ipv4{0xFFFFFFFFu}, port, bytes);
+    for (const auto& i : lan_interfaces()) send_to(i.broadcast(), port, bytes);
+}
+
+std::vector<Udp::Datagram> Udp::receive() {
+    std::vector<Datagram> out;
+    if (!is_open()) return out;
+    char buf[2048];
+    for (int k = 0; k < 64; ++k) { // bounded: a flood cannot stall a frame
+        sockaddr_in from{};
+        socklen_t len = sizeof from;
+        int n = ::recvfrom(as_sock(sock_), buf, sizeof buf, 0, reinterpret_cast<sockaddr*>(&from), &len);
+        if (n <= 0) break;
+        Datagram d;
+        d.from.host = ntohl(from.sin_addr.s_addr);
+        d.port = ntohs(from.sin_port);
+        d.bytes.assign(buf, (std::size_t)n);
+        out.push_back(std::move(d));
+    }
+    return out;
+}
+
+// ── Tcp ─────────────────────────────────────────────────────────────────────────
+
+Tcp::~Tcp() { close(); }
+
+void Tcp::close() {
+    if (sock_ != -1) close_sock(as_sock(sock_));
+    sock_ = -1;
+    if (state_ != State::Idle) state_ = State::Closed;
+}
+
+bool Tcp::connect(Ipv4 to, std::uint16_t port, std::string* error) {
+    close();
+    state_ = State::Idle;
+    if (!winsock_ready()) {
+        if (error) *error = "the socket library did not start";
+        return false;
+    }
+    sock_t s = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (s == kBad || !set_nonblocking(s)) {
+        if (error) *error = error_text("socket");
+        if (s != kBad) close_sock(s);
+        return false;
+    }
+    int on = 1;
+    setsockopt(s, IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char*>(&on), sizeof on);
+    sockaddr_in sa = addr_of(to, port);
+    int r = ::connect(s, reinterpret_cast<sockaddr*>(&sa), sizeof sa);
+    if (r != 0 && !would_block(last_error())) {
+        if (error) *error = error_text("connect");
+        close_sock(s);
+        return false;
+    }
+    sock_ = as_ll(s);
+    peer_ = to;
+    peer_port_ = port;
+    state_ = r == 0 ? State::Connected : State::Connecting;
+    return true;
+}
+
+void Tcp::adopt(long long accepted, Ipv4 peer, std::uint16_t peer_port) {
+    close();
+    sock_t s = as_sock(accepted);
+    set_nonblocking(s);
+    int on = 1;
+    setsockopt(s, IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char*>(&on), sizeof on);
+    sock_ = accepted;
+    peer_ = peer;
+    peer_port_ = peer_port;
+    state_ = State::Connected;
+}
+
+void Tcp::write(const std::string& bytes) { out_ += bytes; }
+
+std::string Tcp::take_read() {
+    std::string r;
+    r.swap(in_);
+    return r;
+}
+
+bool Tcp::pump() {
+    if (state_ == State::Closed || state_ == State::Idle) return false;
+    sock_t s = as_sock(sock_);
+    if (state_ == State::Connecting) {
+        if (!writable_now(s)) {
+            if (int e = socket_error(s)) { // refused, unreachable
+                error_ = "could not connect (error " + std::to_string(e) + ")";
+                close();
+                return false;
+            }
+            return true; // still connecting
+        }
+        if (int e = socket_error(s)) {
+            error_ = "could not connect (error " + std::to_string(e) + ")";
+            close();
+            return false;
+        }
+        state_ = State::Connected;
+    }
+    // out
+    while (!out_.empty()) {
+        int n = ::send(s, out_.data(), (int)std::min<std::size_t>(out_.size(), 64 * 1024),
+#if defined(MSG_NOSIGNAL)
+                       MSG_NOSIGNAL // a closed peer is an error here, not a SIGPIPE that kills the app
+#else
+                       0
+#endif
+        );
+        if (n > 0) {
+            out_.erase(0, (std::size_t)n);
+            continue;
+        }
+        if (n < 0 && would_block(last_error())) break;
+        error_ = "the connection dropped while sending";
+        close();
+        return false;
+    }
+    // in
+    char buf[16 * 1024];
+    for (int k = 0; k < 64; ++k) {
+        int n = ::recv(s, buf, sizeof buf, 0);
+        if (n > 0) {
+            in_.append(buf, (std::size_t)n);
+            continue;
+        }
+        if (n == 0) { // the peer closed
+            error_ = "the other side closed the connection";
+            close();
+            return false;
+        }
+        if (would_block(last_error())) break;
+        error_ = "the connection dropped";
+        close();
+        return false;
+    }
+    return true;
+}
+
+// ── TcpListener ─────────────────────────────────────────────────────────────────
+
+TcpListener::~TcpListener() { close(); }
+
+void TcpListener::close() {
+    if (sock_ != -1) close_sock(as_sock(sock_));
+    sock_ = -1;
+    port_ = 0;
+}
+
+bool TcpListener::open(std::uint16_t port, std::string* error) {
+    close();
+    if (!winsock_ready()) {
+        if (error) *error = "the socket library did not start";
+        return false;
+    }
+    sock_t s = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (s == kBad) {
+        if (error) *error = error_text("socket");
+        return false;
+    }
+#if !defined(_WIN32)
+    // POSIX: allow a quick restart; on Windows SO_REUSEADDR would let two
+    // listeners share a port, which is the opposite of what we want
+    int on = 1;
+    setsockopt(s, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&on), sizeof on);
+#endif
+    sockaddr_in sa = addr_of(Ipv4{0}, port);
+    if (::bind(s, reinterpret_cast<sockaddr*>(&sa), sizeof sa) != 0 || ::listen(s, 8) != 0 ||
+        !set_nonblocking(s)) {
+        if (error) *error = error_text(port ? "listen (is the port in use?)" : "listen");
+        close_sock(s);
+        return false;
+    }
+    sockaddr_in bound{};
+    socklen_t len = sizeof bound;
+    getsockname(s, reinterpret_cast<sockaddr*>(&bound), &len);
+    port_ = ntohs(bound.sin_port);
+    sock_ = as_ll(s);
+    return true;
+}
+
+std::unique_ptr<Tcp> TcpListener::accept() {
+    if (sock_ == -1) return nullptr;
+    sockaddr_in from{};
+    socklen_t len = sizeof from;
+    sock_t c = ::accept(as_sock(sock_), reinterpret_cast<sockaddr*>(&from), &len);
+    if (c == kBad) return nullptr;
+    auto t = std::make_unique<Tcp>();
+    t->adopt(as_ll(c), Ipv4{ntohl(from.sin_addr.s_addr)}, ntohs(from.sin_port));
+    return t;
+}
 
 } // namespace maiz::lan

@@ -35,6 +35,7 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -138,6 +139,100 @@ class MulticastLock {
     void* lock_ = nullptr; // a JNI global reference on Android
     bool held_ = false;
     std::string error_;
+};
+
+/* ── sockets (Q36, answered 2026-09-22) ──────────────────────────────────────
+ * The author, wanting to test phone-to-desktop collaboration: the LAN socket
+ * layer belongs here, beside the platform facts. Void Palabra owns the protocol
+ * (frames, the stream envelope, the session); these are the pipes. Everything is
+ * NON-BLOCKING and polled from the frame loop: a frame never waits on the network.
+ *
+ * UNENCRYPTED. A host allows each joiner by hand, and only private LAN addresses
+ * are accepted, but the bytes are not sealed: this is for a network you trust.
+ * Sealing (Hormiga's X25519 room key, libsodium on Android) is the next step. */
+
+/* One datagram socket bound to a port, broadcast-capable. */
+class Udp {
+  public:
+    Udp() = default;
+    ~Udp();
+    Udp(const Udp&) = delete;
+    Udp& operator=(const Udp&) = delete;
+
+    /* Bind to `port` on every interface (address reuse on, so two copies on one
+     * machine can both listen). False with a reason on failure. */
+    bool open(std::uint16_t port, std::string* error = nullptr);
+    void close();
+    bool is_open() const { return sock_ != invalid_; }
+
+    bool send_to(Ipv4 to, std::uint16_t port, const std::string& bytes);
+    /* To 255.255.255.255 AND each LAN interface's own broadcast address: a
+     * desktop with a VPN adapter otherwise sends only into the adapter. */
+    void broadcast(std::uint16_t port, const std::string& bytes);
+
+    struct Datagram {
+        Ipv4 from;
+        std::uint16_t port = 0;
+        std::string bytes;
+    };
+    /* Every datagram waiting right now; never blocks. */
+    std::vector<Datagram> receive();
+
+  private:
+    static constexpr long long invalid_ = -1;
+    long long sock_ = invalid_;
+};
+
+/* One TCP connection, non-blocking. `write` queues; `pump` moves bytes both ways
+ * and must be called every frame. */
+class Tcp {
+  public:
+    Tcp() = default;
+    ~Tcp();
+    Tcp(const Tcp&) = delete;
+    Tcp& operator=(const Tcp&) = delete;
+
+    /* Start connecting; true if the attempt began (it completes during pump). */
+    bool connect(Ipv4 to, std::uint16_t port, std::string* error = nullptr);
+    void adopt(long long accepted_socket, Ipv4 peer, std::uint16_t peer_port); // from a Listener
+
+    /* Moves queued bytes out and available bytes in. Returns false once the
+     * connection is closed or failed (see error()). */
+    bool pump();
+    void write(const std::string& bytes);
+    std::string take_read(); // everything read since the last call
+
+    bool connected() const { return state_ == State::Connected; }
+    bool closed() const { return state_ == State::Closed; }
+    const std::string& error() const { return error_; }
+    Ipv4 peer() const { return peer_; }
+    void close();
+
+  private:
+    enum class State { Idle, Connecting, Connected, Closed } state_ = State::Idle;
+    long long sock_ = -1;
+    Ipv4 peer_;
+    std::uint16_t peer_port_ = 0;
+    std::string out_, in_, error_;
+};
+
+class TcpListener {
+  public:
+    TcpListener() = default;
+    ~TcpListener();
+    TcpListener(const TcpListener&) = delete;
+    TcpListener& operator=(const TcpListener&) = delete;
+
+    /* Listen on `port` (0 = let the system choose). */
+    bool open(std::uint16_t port, std::string* error = nullptr);
+    void close();
+    std::uint16_t port() const { return port_; }
+    /* A waiting connection, or nullptr; never blocks. */
+    std::unique_ptr<Tcp> accept();
+
+  private:
+    long long sock_ = -1;
+    std::uint16_t port_ = 0;
 };
 
 /* The Android manifest lines a LAN-capable Void Maiz application needs. All

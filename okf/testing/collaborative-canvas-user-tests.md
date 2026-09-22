@@ -39,7 +39,7 @@ change the most.
 | **0.3.0** | the phone layout (fits, rotates) and updating itself | **ready (2026-09-22)**: M1–M4, U-1–U-3 below |
 | **N1** | cursors, drag ghosts, pending wires, held rings, edge chips | not built |
 | **N2** | reduction claims and the crank, your-own-undo | not built |
-| **N3** | a real LAN between devices, including an Android phone | not built (waits on Q36: where the LAN socket layer lives) |
+| **N3** | a real LAN between devices, including an Android phone | **ready (0.4.0, 2026-09-22)**: the LAN button; tests L1–L4 below, then E1–E6 |
 | **N4** | follow, pings, typing preview, "while you were away" | not built |
 
 Each test below says which stage it needs. When a stage lands, Claude will tell
@@ -125,6 +125,33 @@ Android the system asks you to confirm (the first time, it also asks you to allo
 installs from this app).
 *Tests:* the whole update path on a real release. **The Android half has never
 run on a device before this test.**
+
+# Two devices on one Wi-Fi (0.4.0, ready now)
+
+Phone and PC on the **same Wi-Fi**. On the PC, the first time you share, Windows
+asks about network access: choose **Allow** on private networks. (Guest and
+campus Wi-Fi often block devices from reaching each other; home Wi-Fi works.)
+
+**L1 ★ Share and join.** On the PC press **LAN** (bottom bar) → **Share this
+net**. On the phone press **LAN** → **Join a net**.
+*Watch:* within a few seconds the phone lists the PC by its computer name. Tap
+**Join**. The PC's LAN panel pops up: *"Phone-xxx wants to join"* → **Allow**. The
+phone now shows the PC's net.
+*Tests:* discovery ("beacon out, unicast back": the phone hears the PC's answer
+even though Android drops broadcasts), the Allow gate.
+
+**L2 Join by code.** If the phone's list stays empty: the PC's panel shows a short
+code (about three digits). On the phone, type it on the keypad → **Join by code**.
+
+**L3 ★ Work together.** Move a node on one device; fire a pair on the other; tag an
+agent `+red` on one and `+blue` on the other at the same time.
+*Watch:* each change appears on the other device within a second; a step fired on
+one plays its rewrite animation on the other; the two tags make purple on both.
+*Tests:* sync over the real LAN, remote playback, pigments merging.
+
+**L4 Deny, and leaving.** A third device (or the phone again) asks to join and the
+host presses **Deny**: the joiner is told "the host said no" and receives nothing.
+Press **Leave** on the phone: the PC's count drops, and the phone keeps its copy.
 
 # Setup, once per session
 

@@ -6864,3 +6864,54 @@ socket layer).
 
 Suite: **19/19 gating** (new: `update_smoke`; `touch_smoke` grew), duo selftest
 17/17, `reduce_conformance` unchanged at 17/25.
+
+## 2026-09-22: The LAN, built: a LAN button, two devices, one net (Q36)
+
+The author, after 0.3.0: *"wait, where's the networking button on the
+application? … the whole point was to test networking."* They were right that
+there was none. Every sync so far had been two windows in one process; nothing
+moved bytes between two devices, because Q36 (where the sockets live) was still
+open. Answered by building it, where leaned:
+
+- **`voidmaiz_lan` grew sockets**: `Udp` (broadcast-capable), `Tcp`,
+  `TcpListener`, non-blocking and polled from the frame loop. Winsock and POSIX in
+  one file, compiled clean for Android.
+- **`LanSession`** (`voidmaiz/lanlink.hpp`, in `voidmaiz_net`):
+  - **Discovery:** a beacon each second, and every beacon heard is answered by
+    unicast, because Android drops broadcasts but not unicast.
+  - **Joining:** a handshake the host's *person* answers with Allow or Deny.
+  - **Framing:** Palabra's stream envelope, read by Palabra's own `StreamReader`.
+  - **Guard:** only private-LAN or loopback addresses.
+- **Unencrypted, and the app says so.** This relaxes the family's railguard rule
+  on the author's explicit ask for LAN-only use. Sealing is the next step.
+
+**One bug found by the test:** a Deny arrives with the connection's close in the
+same read, and the first version reported "closed before answering" without
+reading the bytes. Bytes that arrive with a close now count.
+
+**Interaction Combinators 0.4.0:**
+- **The LAN button** sits right after *step* on the action bar, on phone and
+  desktop. The panel offers Share (address, join code, Allow/Deny, pops up when
+  someone knocks) and Join (the hosts found on the Wi-Fi, plus join-by-code on a
+  digit keypad, since there is no system keyboard, Q29).
+- **Sessions start at runtime.** The network now starts when you press Share or
+  Join (`start_network()`), no longer only at launch. A joiner's document is
+  replaced by an empty one (E12).
+- **Every session gets a fresh replica id.** A rejoin under an old id would be
+  refused: the host holds tags under it that a new replica does not know.
+- **Identity on a network:** each device appears under its computer name or
+  Phone-xxx, with a colour from a palette that has no pigments in it.
+- **Android:** the APK now links Palabra and the network (9.6 MB) and holds the
+  multicast lock while the LAN is open.
+
+**Measured:**
+- `lanlink_smoke`: two Cores over real TCP. Join, the Allow gate (nothing moves
+  before it), both directions, Deny, leave. Stable over three runs.
+- **Two real IC processes on this machine**, driven by test-only launch flags
+  (`--lan-share --lan-auto-allow`, `--lan-join`, `--probe-out`), found each other
+  by UDP broadcast, connected, and ended with identical nets.
+- **The phone panels** were screenshotted in the preview.
+- **Not yet tested:** a real phone, which the author's L1–L4 are for.
+
+Suite: **20/20 gating** (new `lanlink_smoke`), duo selftest 17/17,
+`reduce_conformance` unchanged at 17/25.

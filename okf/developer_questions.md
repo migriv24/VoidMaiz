@@ -1,7 +1,7 @@
 ---
 type: Questions
 title: Developer questions
-description: Open decisions for the author, each with a lean. Open — Q36 (where the LAN socket layer lives now that Palabra declined it; lean: grow voidmaiz_lan into it, gates stage N3 only), Q29 (how a soft keyboard reaches a Void Maiz application; lean: an ImGui-drawn keyboard first, because the platform IME costs the zero-Java claim), Q27 (should wire routing be a CanvasStyle option; lean: Orthogonal yes but probably per-glyph, not per-canvas, and `Direct` is just correct behaviour rather than a mode), Q26 (where an act rune's role list lives; lean: a `roles` key on the descriptor, asked upstream rather than invented here), Q25 (which mantle a compiled attention graph belongs in; the Device enum is already generalized to an open channel string), Q23 (should JoinFn see the per-source grouping; lean yes, additively, when a client asks), Q22 (should identifiers accept non-ASCII; lean ASCII-only for now, widening is additive), Q21 (may the out-of-tree test harness have dependencies; lean stdlib-only Python), Q20 (whose attention the user action graph records — per-peer or shared across Palabra peers; has a privacy cost, decide before anything materializes one), Q16–Q19 (Void Hormiga's four Allomone boundary questions; the engine is built, the calls are the author's), Q12 (widget kit — ImGui-composed vs sanctioned Qt-class adapter), Q13 (surface-census trigger), Q14 (where a census bundle lands), Q15 (retarget moves to `place` now that Core 0.2.5 landed — takes moves out of undo). Q11 (workspace rung) decided 2026-07-20: enable ImGui docking. Q31–Q35 (collaborative canvas) decided 2026-09-20: the author accepted every lean. Q28 decided 2026-09-21: layout mechanisms in the library, layouts in the host.
+description: Open decisions for the author, each with a lean. Open — Q29 (how a soft keyboard reaches a Void Maiz application; lean: an ImGui-drawn keyboard first, because the platform IME costs the zero-Java claim), Q27 (should wire routing be a CanvasStyle option; lean: Orthogonal yes but probably per-glyph, not per-canvas, and `Direct` is just correct behaviour rather than a mode), Q26 (where an act rune's role list lives; lean: a `roles` key on the descriptor, asked upstream rather than invented here), Q25 (which mantle a compiled attention graph belongs in; the Device enum is already generalized to an open channel string), Q23 (should JoinFn see the per-source grouping; lean yes, additively, when a client asks), Q22 (should identifiers accept non-ASCII; lean ASCII-only for now, widening is additive), Q21 (may the out-of-tree test harness have dependencies; lean stdlib-only Python), Q20 (whose attention the user action graph records — per-peer or shared across Palabra peers; has a privacy cost, decide before anything materializes one), Q16–Q19 (Void Hormiga's four Allomone boundary questions; the engine is built, the calls are the author's), Q12 (widget kit — ImGui-composed vs sanctioned Qt-class adapter), Q13 (surface-census trigger), Q14 (where a census bundle lands), Q15 (retarget moves to `place` now that Core 0.2.5 landed — takes moves out of undo). Q11 (workspace rung) decided 2026-07-20: enable ImGui docking. Q31–Q35 (collaborative canvas) decided 2026-09-20: the author accepted every lean. Q28 decided 2026-09-21: layout mechanisms in the library, layouts in the host. Q36 decided 2026-09-22: the LAN socket layer is voidmaiz_lan + LanSession.
 tags: [status:current, audience:dev, confidence:asserted]
 timestamp: 2026-08-09T00:00:00Z
 ---
@@ -10,27 +10,6 @@ Open decisions, with leans so a non-answer has a sensible default. Answer inline
 in chat, or via FaultSack notes; answers fold into concepts and clear from here.
 
 # Open
-
-- **Q36 — where does the LAN socket layer live?** Raised 2026-09-21 when Void
-  Palabra **declined** to build `voidpalabra_lan`, citing the author's lean that
-  Palabra should not own Android networking. Palabra now owns everything every
-  transport must agree on: the frame, the stream envelope and `StreamReader`, the
-  session, coalescing, and lifecycle as "a dead link is just a new session". What
-  is left is the sockets: UDP beacon ("beacon out, unicast back"), per-interface
-  binding, the TCP stream, the sealed session (X25519, the short authentication
-  string, libsodium cross-compiled for Android), and the lessons from Hormiga's
-  three defects. Today that code exists only inside Void Hormiga.
-  (a) **grow `voidmaiz_lan` into it**, as an optional target, the only one that
-  opens sockets; (b) a **new sibling repository** for platform networking; (c)
-  each application keeps its own (Hormiga's stays, and IC copies it).
-  **Lean: (a).** `voidmaiz_lan` already holds the platform facts (interfaces, the
-  join code, the Android multicast lock), every Void GUI app on Android already
-  links Void Maiz, and a new repository costs an agent and a relay loop for about
-  1,500 lines. It narrows Q30's wording ("Palabra owns transport" becomes "Palabra
-  owns the protocol, the sockets sit beside the platform code"), which is exactly
-  the revision the author's lean implies. (c) is how a family stops being one.
-  **Gates stage N3 only**: N0–N2 need no sockets. The trust gate (the author's
-  explicit LAN-only yes for IC) applies wherever it lands.
 
 - **Q29 — how does a soft keyboard reach a Void Maiz application?** Raised
   2026-09-13 while building the touch layer. It is the APK's oldest known gap
@@ -434,6 +413,19 @@ in chat, or via FaultSack notes; answers fold into concepts and clear from here.
   bumping our floor from 0.2.4 to 0.2.5 (0.2.6 adds `mantle rm`/`rename`).
 
 # Decided
+
+## By the author, 2026-09-22 (the LAN)
+
+- **Q36 (where the LAN socket layer lives): here, as leaned.** *"wait, where's the
+  networking button on the application? … the whole point was to test
+  networking."* Built the same day: sockets in `voidmaiz_lan` (`Udp`, `Tcp`,
+  `TcpListener`, non-blocking, Windows and POSIX/Android), and `LanSession` in
+  `voidmaiz_net` (discovery by beacon with unicast replies, a join handshake a
+  person answers with Allow or Deny, Palabra's stream envelope read by Palabra's
+  own `StreamReader`). **Unencrypted, said so on screen**: only private-LAN or
+  loopback addresses, the host allows each joiner, no sealing yet. Taking the
+  author's ask as the explicit LAN-only yes for Interaction Combinators that
+  Q34 required.
 
 ## By the author, 2026-09-21 (mobile layout and updates)
 

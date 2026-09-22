@@ -19,9 +19,14 @@ if an application that already networks has to change significantly to adopt it.
 `examples/network_window.cpp`. Stage C is `voidmaiz/net.hpp` (target
 `voidmaiz_net`, 2026-09-19), which runs real Cores through Void Palabra's sync
 session, pinned by `tests/net_smoke.cpp` over an in-memory lossy mesh.
-**Not built:** a transport that moves bytes across a real network. That is gated
-on the trust model (signatures, whose keys, capabilities), as the family's rule
-requires.
+**Built 2026-09-22 (Q36): a real LAN transport**, `voidmaiz/lanlink.hpp` over the
+sockets in `voidmaiz/lan.hpp`, pinned by `lanlink_smoke` (two Cores over real TCP:
+join, Allow, Deny, both directions) and by two real Interaction Combinators
+processes finding each other by UDP broadcast and converging. **It is not
+encrypted**, which is the family rule's gate relaxed on the author's explicit ask
+for LAN-only use: private or loopback addresses only, a person allows each joiner,
+and the app says so on screen. Sealing (Hormiga's room key, libsodium on Android)
+and the trust model still gate anything beyond one's own Wi-Fi.
 
 # Why a UI library owns this
 
