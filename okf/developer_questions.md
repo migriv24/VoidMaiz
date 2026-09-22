@@ -1,7 +1,7 @@
 ---
 type: Questions
 title: Developer questions
-description: Open decisions for the author, each with a lean. Open — Q36 (where the LAN socket layer lives now that Palabra declined it; lean: grow voidmaiz_lan into it, gates stage N3 only), Q29 (how a soft keyboard reaches a Void Maiz application; lean: an ImGui-drawn keyboard first, because the platform IME costs the zero-Java claim), Q28 (does the library lay out panes per substrate; lean: no, keep climbing one rung per real need — ask Void Hormiga after they build a phone shell), Q27 (should wire routing be a CanvasStyle option; lean: Orthogonal yes but probably per-glyph, not per-canvas, and `Direct` is just correct behaviour rather than a mode), Q26 (where an act rune's role list lives; lean: a `roles` key on the descriptor, asked upstream rather than invented here), Q25 (which mantle a compiled attention graph belongs in; the Device enum is already generalized to an open channel string), Q23 (should JoinFn see the per-source grouping; lean yes, additively, when a client asks), Q22 (should identifiers accept non-ASCII; lean ASCII-only for now, widening is additive), Q21 (may the out-of-tree test harness have dependencies; lean stdlib-only Python), Q20 (whose attention the user action graph records — per-peer or shared across Palabra peers; has a privacy cost, decide before anything materializes one), Q16–Q19 (Void Hormiga's four Allomone boundary questions; the engine is built, the calls are the author's), Q12 (widget kit — ImGui-composed vs sanctioned Qt-class adapter), Q13 (surface-census trigger), Q14 (where a census bundle lands), Q15 (retarget moves to `place` now that Core 0.2.5 landed — takes moves out of undo). Q11 (workspace rung) decided 2026-07-20: enable ImGui docking. Q31–Q35 (collaborative canvas) decided 2026-09-20: the author accepted every lean.
+description: Open decisions for the author, each with a lean. Open — Q36 (where the LAN socket layer lives now that Palabra declined it; lean: grow voidmaiz_lan into it, gates stage N3 only), Q29 (how a soft keyboard reaches a Void Maiz application; lean: an ImGui-drawn keyboard first, because the platform IME costs the zero-Java claim), Q27 (should wire routing be a CanvasStyle option; lean: Orthogonal yes but probably per-glyph, not per-canvas, and `Direct` is just correct behaviour rather than a mode), Q26 (where an act rune's role list lives; lean: a `roles` key on the descriptor, asked upstream rather than invented here), Q25 (which mantle a compiled attention graph belongs in; the Device enum is already generalized to an open channel string), Q23 (should JoinFn see the per-source grouping; lean yes, additively, when a client asks), Q22 (should identifiers accept non-ASCII; lean ASCII-only for now, widening is additive), Q21 (may the out-of-tree test harness have dependencies; lean stdlib-only Python), Q20 (whose attention the user action graph records — per-peer or shared across Palabra peers; has a privacy cost, decide before anything materializes one), Q16–Q19 (Void Hormiga's four Allomone boundary questions; the engine is built, the calls are the author's), Q12 (widget kit — ImGui-composed vs sanctioned Qt-class adapter), Q13 (surface-census trigger), Q14 (where a census bundle lands), Q15 (retarget moves to `place` now that Core 0.2.5 landed — takes moves out of undo). Q11 (workspace rung) decided 2026-07-20: enable ImGui docking. Q31–Q35 (collaborative canvas) decided 2026-09-20: the author accepted every lean. Q28 decided 2026-09-21: layout mechanisms in the library, layouts in the host.
 tags: [status:current, audience:dev, confidence:asserted]
 timestamp: 2026-08-09T00:00:00Z
 ---
@@ -71,34 +71,6 @@ in chat, or via FaultSack notes; answers fold into concepts and clear from here.
   possible. But this is exactly the kind of call the author makes — it trades a
   ground rule against a headline feature, and (a) is what every other project
   would do. See [touch](/concepts/touch.md).
-
-- **Q28 — does the library lay out panes per substrate, or does each host?**
-  Raised 2026-09-13; the honest continuation of **Q11**, whose ruling (enable
-  ImGui docking, 2026-07-20) solved the desktop half and does not reach a phone.
-  DockSpace assumes a surface wide enough to hold two panels side by side; a
-  430-px portrait screen holds one, and the arrangement is not a smaller version
-  of the desktop's but a different one — stacked, switched by a segmented
-  control, with the inspector as a bottom sheet and the log gone entirely.
-
-  The rung would be: a host declares its panels once (`{"canvas", "inspector",
-  "log", "table"}` with roles/priorities) and the library arranges them per
-  substrate — docked on desktop, stacked-and-switched on glass.
-
-  **Lean: no, not yet — keep climbing one rung per real need.** That was the
-  author's rule at Q11 and it has been right twice. What shipped instead is the
-  *pieces* a host arranges itself (bottom sheet, segmented control, FAB, swipe
-  row, touch profile), which is what docking's ruling did too: the library owns
-  the primitive, the host owns which panels exist. A layout engine is the first
-  thing on this list that would genuinely be a **framework**, and the
-  vendor-don't-depend instinct that favoured *more ImGui* at Q11 points the
-  other way here, because ImGui has no responsive layout to turn on.
-
-  **What would change the answer:** Void Hormiga building its phone shell and
-  finding that its four workflows plus Territory need the same twenty lines its
-  desktop shell needs — i.e. a second host, with the same shape, written twice.
-  That is exactly the evidence that moved touch recognition into the library
-  this session, and it would move this too. Ask them after they build it, not
-  before.
 
 - **Q27 — should wire routing be a `CanvasStyle` option?** Raised 2026-09-04 by
   Void Mago, the first client whose graph is entirely loose wires. They proposed:
@@ -462,6 +434,23 @@ in chat, or via FaultSack notes; answers fold into concepts and clear from here.
   bumping our floor from 0.2.4 to 0.2.5 (0.2.6 adds `mantle rm`/`rename`).
 
 # Decided
+
+## By the author, 2026-09-21 (mobile layout and updates)
+
+- **Q28 (does the library lay out panes per substrate?): no layout engine, but
+  the mechanisms, yes.** After using the 0.2.0 APK: *"i can't see all the
+  buttons, things dont fit on the screen, i cant rotate my phone … this changes a
+  lot, depending on what kind of application one is trying to make, and
+  especially on mobile (no real 1 size fits all thing on mobile). however, there
+  should still be abstract mechanisms for doing so."* That is the lean's split
+  made explicit. The host still decides which panes exist and where. The library
+  answers the questions every host's layout branches on, the same way everywhere:
+  `classify_layout` (phone / tablet / desktop, portrait / landscape, compact,
+  narrow, all in dp), and `action_bar` (fits what it can, overflows the rest
+  behind a drawn "more" button, most important kept visible, never clipped).
+  Plus `dots_button` and `begin_overflow_menu`, so a desktop menu bar's whole
+  content can live behind one button on a phone. Interaction Combinators 0.3.0 is
+  the first host. **Also ruled: updates live in Void Maiz** ([updates](/concepts/updates.md)).
 
 ## By the author, 2026-09-20 (collaborative canvas: "i trust your leans")
 

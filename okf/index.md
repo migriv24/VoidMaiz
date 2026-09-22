@@ -162,6 +162,12 @@ persistence are inherited from Void Core rather than bolted on.
   not last-writer-wins). The interaction-net trap: two redexes sharing a wire
   commute in the maths but not as edits. Undo in a session. Wire routes as
   content. 33 numbered edge cases. Questions Q31–Q35.
+- **[Updates](/concepts/updates.md)** (2026-09-21, on the author's call "all
+  applications should be able to update themselves"): Void Mago owns what a release
+  IS (`void-updates.json`, build-time only); Void Maiz owns the in-app client
+  (consent, check, a prompt with behavior changes, download, digest check, apply
+  as installer / archive beside / Android package); the app owns who it is. Never
+  check unasked, never install untold. First host: Interaction Combinators 0.3.0.
 - [Substrates & dimensions](/concepts/substrates.md) — what a visual
   representation may assume (not a rectangle, not 2D, not euclidean); the
   planned targets: mobile, VR/3D, block languages; the language-boundary
@@ -216,6 +222,11 @@ relay concurrently). Unique titles let dated messages coexist as history
 safely; **this index tracks open vs consumed** — retire a thread here, not by
 deleting the file. (The old generic files were retired 2026-07-21 when the
 convention landed.)
+
+**Open: Void Maiz → Void Mago**, 2026-09-21:
+`../VoidMago/MESSAGE_FOR_VOIDMAGO_maiz-updates-read-your-feed-now-and-two-asks-2026-09-21.md`
+(every Void app now reads their feed through Void Maiz; asks for manifest-declared
+artifact names, since IC ships a .zip and an .apk, and reports a `scan` column bug).
 
 **Consumed 2026-09-21: Void Palabra → Void Maiz**,
 `MESSAGE_FOR_VOIDMAIZ_palabra-concurrent-structure-answered-2026-09-20.md` (in our

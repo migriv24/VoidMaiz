@@ -1,5 +1,6 @@
 /* mobile.cpp — the mobile chrome kit (voidmaiz/mobile.hpp). */
 #include "voidmaiz/mobile.hpp"
+#include "voidmaiz/widgets.hpp" // tool_button
 
 #include <algorithm>
 #include <cfloat>
@@ -399,6 +400,95 @@ void end_swipe_row(SwipeListState& st) {
     (void)st;
     ImGui::PopID();
     ImGui::Spacing();
+}
+
+// ── the action bar ──────────────────────────────────────────────────────────
+
+float dots_button_width(bool touch) {
+    return touch ? ImGui::GetFrameHeight() : ImGui::GetTextLineHeight() + 6.0f;
+}
+
+bool dots_button(const char* str_id, bool touch) {
+    float w = dots_button_width(touch);
+    float h = touch ? ImGui::GetFrameHeight() : ImGui::GetTextLineHeight();
+    ImVec2 at = ImGui::GetCursorScreenPos();
+    bool pressed = ImGui::InvisibleButton(str_id, ImVec2(w, h));
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    ImU32 bg = ImGui::GetColorU32(ImGui::IsItemActive()    ? ImGuiCol_ButtonActive
+                                  : ImGui::IsItemHovered() ? ImGuiCol_ButtonHovered
+                                                           : ImGuiCol_Button);
+    dl->AddRectFilled(at, ImVec2(at.x + w, at.y + h), bg, ImGui::GetStyle().FrameRounding);
+    // three dots, stacked (the platform's "more" affordance)
+    float r = std::max(1.5f, h * 0.075f);
+    ImU32 fg = ImGui::GetColorU32(ImGuiCol_Text);
+    for (int k = -1; k <= 1; ++k)
+        dl->AddCircleFilled(ImVec2(at.x + w * 0.5f, at.y + h * 0.5f + k * h * 0.24f), r, fg);
+    return pressed;
+}
+
+bool begin_overflow_menu(const char* str_id, bool touch) {
+    ImGui::PushID(str_id);
+    if (dots_button("##more", touch)) ImGui::OpenPopup("##menu");
+    bool open = ImGui::BeginPopup("##menu");
+    if (!open) ImGui::PopID();
+    return open;
+}
+
+void end_overflow_menu() {
+    ImGui::EndPopup();
+    ImGui::PopID();
+}
+
+int action_bar(const char* str_id, const std::vector<BarAction>& actions, bool touch,
+               float width) {
+    ImGui::PushID(str_id);
+    const ImGuiStyle& style = ImGui::GetStyle();
+    float avail = width > 0.0f ? width : ImGui::GetContentRegionAvail().x;
+    std::vector<ActionSpec> specs;
+    specs.reserve(actions.size());
+    for (const auto& a : actions) {
+        ActionSpec s;
+        // Button and SmallButton share the horizontal padding
+        s.width = ImGui::CalcTextSize(a.label.c_str(), nullptr, true).x + style.FramePadding.x * 2;
+        s.priority = a.priority;
+        s.pinned = a.pinned;
+        specs.push_back(s);
+    }
+    ActionPlan plan = plan_action_bar(specs, avail, dots_button_width(touch), style.ItemSpacing.x);
+
+    int pressed = -1;
+    bool first = true;
+    for (int i : plan.visible) {
+        const BarAction& a = actions[i];
+        if (!first) ImGui::SameLine();
+        first = false;
+        ImGui::PushID(i);
+        if (!a.enabled) ImGui::BeginDisabled();
+        if (a.primary) {
+            ImGui::PushStyleColor(ImGuiCol_Button, style.Colors[ImGuiCol_ButtonActive]);
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, style.Colors[ImGuiCol_ButtonActive]);
+        }
+        bool hit = tool_button(a.label.c_str(), touch);
+        if (a.primary) ImGui::PopStyleColor(2);
+        if (!a.enabled) ImGui::EndDisabled();
+        ImGui::PopID();
+        if (hit) pressed = i;
+    }
+    if (!plan.overflow.empty()) {
+        if (!first) ImGui::SameLine();
+        if (dots_button("##more", touch)) ImGui::OpenPopup("##overflow");
+        if (ImGui::BeginPopup("##overflow")) {
+            for (int i : plan.overflow) {
+                const BarAction& a = actions[i];
+                ImGui::PushID(i);
+                if (ImGui::MenuItem(a.label.c_str(), nullptr, false, a.enabled)) pressed = i;
+                ImGui::PopID();
+            }
+            ImGui::EndPopup();
+        }
+    }
+    ImGui::PopID();
+    return pressed;
 }
 
 } // namespace maiz

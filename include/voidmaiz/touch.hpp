@@ -259,4 +259,49 @@ bool camera_pinch(Camera& cam, float scale, float focus_x, float focus_y, float 
 bool camera_apply(const TouchEvent& e, Camera& cam, float origin_x, float origin_y,
                   float min_zoom = 0.2f, float max_zoom = 3.0f);
 
+/* ── what kind of screen this is (Q28, answered 2026-09-21) ──────────────────
+ * The author, after using the APK: "i can't see all the buttons, things dont
+ * fit on the screen, i cant rotate my phone and have different views … there
+ * should still be abstract mechanisms for doing so." So the library does not
+ * lay out a host's panes (there is no one size that fits on mobile), but it does
+ * answer the question every host's layout branches on, the same way everywhere.
+ *
+ * Measured in dp (density-independent pixels: px / scale), because a 1080-px
+ * phone at 3.4x is a 317-dp screen and must be laid out like one. `compact` is
+ * the platform convention's window class: the SHORT side under 600 dp. A phone
+ * is compact in both orientations; a tablet is not; a narrow desktop window
+ * (a duo-bench half) can be. */
+enum class FormFactor { Phone, Tablet, Desktop };
+enum class Orientation { Portrait, Landscape };
+
+struct LayoutClass {
+    FormFactor form = FormFactor::Desktop;
+    Orientation orientation = Orientation::Landscape;
+    float width_dp = 0, height_dp = 0;
+    bool compact = false;     // short side < 600 dp
+    bool narrow = false;      // width < 600 dp: one column, whatever the device
+};
+
+LayoutClass classify_layout(float width_px, float height_px, float scale, bool touch);
+
+/* ── fitting a row of actions (the pure half of mobile.hpp's action_bar) ─────
+ * Every item that fits is shown; the rest go into an overflow menu, most
+ * important kept visible first. Nothing is ever simply clipped off the edge,
+ * which is what the 0.2.0 APK did. Lower `priority` = more important; `pinned`
+ * items are kept visible before any priority is considered. The visible items
+ * keep their ORIGINAL order, so a toolbar does not reshuffle as it narrows. */
+struct ActionSpec {
+    float width = 0;
+    int priority = 0;
+    bool pinned = false;
+};
+
+struct ActionPlan {
+    std::vector<int> visible;  // indices, original order
+    std::vector<int> overflow; // indices, original order; empty = no overflow button
+};
+
+ActionPlan plan_action_bar(const std::vector<ActionSpec>& items, float available,
+                           float overflow_width, float spacing);
+
 } // namespace maiz

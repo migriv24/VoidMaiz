@@ -418,4 +418,51 @@ bool camera_apply(const TouchEvent& e, Camera& cam, float origin_x, float origin
     return false;
 }
 
+// ── what kind of screen this is ─────────────────────────────────────────────
+
+LayoutClass classify_layout(float width_px, float height_px, float scale, bool touch) {
+    LayoutClass c;
+    if (scale <= 0.0f) scale = 1.0f;
+    c.width_dp = width_px / scale;
+    c.height_dp = height_px / scale;
+    float short_side = std::min(c.width_dp, c.height_dp);
+    c.orientation = c.width_dp >= c.height_dp ? Orientation::Landscape : Orientation::Portrait;
+    c.compact = short_side < 600.0f;
+    c.narrow = c.width_dp < 600.0f;
+    c.form = !touch ? FormFactor::Desktop : (c.compact ? FormFactor::Phone : FormFactor::Tablet);
+    return c;
+}
+
+// ── fitting a row of actions ────────────────────────────────────────────────
+
+ActionPlan plan_action_bar(const std::vector<ActionSpec>& items, float available,
+                           float overflow_width, float spacing) {
+    ActionPlan plan;
+    const int n = (int)items.size();
+    float all = 0.0f;
+    for (int i = 0; i < n; ++i) all += items[i].width + (i ? spacing : 0.0f);
+    if (all <= available) {
+        for (int i = 0; i < n; ++i) plan.visible.push_back(i);
+        return plan;
+    }
+    // something overflows: the overflow button takes its place first
+    std::vector<int> order(n);
+    for (int i = 0; i < n; ++i) order[i] = i;
+    std::stable_sort(order.begin(), order.end(), [&](int a, int b) {
+        if (items[a].pinned != items[b].pinned) return items[a].pinned;
+        return items[a].priority < items[b].priority;
+    });
+    float used = overflow_width;
+    std::vector<bool> shown(n, false);
+    for (int i : order) {
+        float w = items[i].width + spacing; // every shown item sits before the button
+        if (used + w <= available) {
+            used += w;
+            shown[i] = true;
+        }
+    }
+    for (int i = 0; i < n; ++i) (shown[i] ? plan.visible : plan.overflow).push_back(i);
+    return plan;
+}
+
 } // namespace maiz

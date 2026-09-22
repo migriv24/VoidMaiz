@@ -129,6 +129,43 @@ void show_snackbar(SnackbarState& st, const std::string& message, const std::str
  * dismisses it). Call once per frame, near the end of the host's frame(). */
 bool draw_snackbar(SnackbarState& st);
 
+/* ── an action bar that never clips (Q28, 2026-09-21) ───────────────────────
+ * A row of buttons laid out to the width it has: everything that fits is drawn,
+ * the rest go into an overflow menu behind a "more" button (three drawn dots:
+ * the bundled font has no U+22EE). The most important stay visible, in their
+ * original order (plan_action_bar in touch.hpp is the pure half, and is tested).
+ * The 0.2.0 APK drew its toolbar as a plain row, and on a 317-dp phone half of
+ * it was off the edge of the screen: unreachable, not merely cramped.
+ *
+ * Returns the index of the action pressed this frame, or -1. `width` 0 = the
+ * rest of the current line. Same code on both substrates: touch=false draws
+ * compact buttons, and a narrow desktop window (a duo-bench half) overflows the
+ * same way a phone does. */
+struct BarAction {
+    std::string label;
+    int priority = 0;     // lower = more important = kept visible longer
+    bool enabled = true;
+    bool pinned = false;  // always visible if anything is
+    bool primary = false; // drawn emphasized: the one thing this screen is for
+};
+
+int action_bar(const char* str_id, const std::vector<BarAction>& actions, bool touch,
+               float width = 0.0f);
+
+/* The "more" affordance on its own (an app bar's trailing menu), and its width
+ * so a host can right-align it. */
+bool dots_button(const char* str_id, bool touch);
+float dots_button_width(bool touch);
+
+/* A menu hanging off a dots button. Between begin/end the host draws ordinary
+ * ImGui menus (BeginMenu/MenuItem), so a desktop menu bar's entire content can
+ * move behind one button on a phone without being rewritten:
+ *
+ *   if (maiz::begin_overflow_menu("app-menu", touch)) { draw_menus(); maiz::end_overflow_menu(); }
+ */
+bool begin_overflow_menu(const char* str_id, bool touch);
+void end_overflow_menu();
+
 /* ── the action button (FAB) and its speed dial ──────────────────────────────
  * A menu bar sits where a thumb cannot reach; the primary action belongs in the
  * bottom corner. `fab` is the single button; `speed_dial` expands it into a

@@ -30,7 +30,12 @@ imgui*.ini
 # CTest's scratch directory. `ctest` run from the repo root (rather than from
 # build/) writes Testing/Temporary/LastTest.log into the SOURCE tree, and that
 # log carries absolute paths under the builder's home directory.
-Testing/
+#
+# ANCHORED to the root (2026-09-21). Unanchored, `Testing/` also matched
+# `okf/testing/` — git on Windows matches case-insensitively — and the author's
+# user testing guide was silently never committed. CTest only ever writes it at
+# the top of the tree.
+/Testing/
 
 # Agent config: personal, not project. `.claude/settings.json` here is this
 # machine's permission allowlist — 108 lines of one-off invocations and

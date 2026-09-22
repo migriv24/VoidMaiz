@@ -6794,3 +6794,73 @@ depends on, so a fresh clone builds.
 Known limits, stated in the release notes: the APK is solo (no LAN transport,
 Q36), collaboration shows changes but not yet cursors or in-flight gestures (N1),
 and there is no packaged Linux or macOS build.
+
+## 2026-09-21 (fourth pass): The phone layout, answered with mechanisms; and updates move into Void Maiz
+
+**The author used the 0.2.0 APK:** *"the view is really bad … i can't see all the
+buttons, things dont fit on the screen, i cant rotate my phone"*. Double-tap to
+fire and the general responsiveness they liked. The cause was measurable: the
+Android shell scales the UI by dpi/160 x 1.3, so a 1080-px, 420-dpi phone is a
+**~317-dp screen**, and the desktop's menu bar and toolbar had simply been drawn
+into it. Rotation was locked by the manifest (`screenOrientation="portrait"`).
+
+**Q28 decided: mechanisms in the library, layouts in the host** (*"no real 1 size
+fits all thing on mobile … however, there should still be abstract mechanisms"*).
+Built:
+
+- `classify_layout` (UI-free, `touch.hpp`): phone / tablet / desktop, portrait /
+  landscape, compact (short side < 600 dp), narrow (width < 600 dp).
+- `plan_action_bar` (UI-free, pinned in `touch_smoke`) and `action_bar`
+  (`mobile.hpp`): fits what it can, the rest behind a "more" button drawn as three
+  dots (the bundled font has no U+22EE), most important kept visible, original
+  order kept.
+- `dots_button` and `begin_overflow_menu`, so a desktop menu bar's content can
+  move behind one button unchanged.
+
+**Interaction Combinators 0.3.0 uses them.**
+- **Upright:** app bar (name, pairs, ⋮ holding every desktop menu), canvas, action
+  bar, and the inspector in a bottom sheet.
+- **Sideways:** canvas and action bar beside the inspector.
+- **Desktop:** the same action bar, so a narrow duo half overflows instead of
+  clipping.
+- **Rotation:** the manifest follows the sensor (`fullUser`, which respects the
+  rotation lock), and the camera frames the whole net on first show and on every
+  rotation.
+- **Verified** with a new `--phone` / `--phone-landscape` desktop preview (a
+  360x740 dp phone at scale 2 through the same `apply_touch_metrics` path), in
+  screenshots of both orientations. Not yet held in a hand.
+
+**Updates are Void Maiz's** (*"all applications should be able to update
+themselves"*). See [updates](/concepts/updates.md) for the line (Mago owns what a
+release is, Maiz owns the in-app client, the app owns who it is) and the two
+rules.
+- **What was built:** `voidmaiz/update.hpp` (target `voidmaiz_update`), adapted
+  from Void Hormiga's client, with the name taken out, the network as a seam, zip
+  archives, and an Android path through JNI. Plus `updateview.hpp`: the consent
+  question, the badge, the prompt with behavior changes, and a settings section.
+- **Three Windows traps caught by the test or a screenshot:**
+  - GNU tar from Git reads `C:\...` as a host, so the client names System32's
+    bsdtar.
+  - `cmd.exe` eats the outer quotes of a line that starts with one.
+  - The consent dialog cut off the sentence that makes it fair.
+- **Tested:** `update_smoke` covers parsing, refusals, the decision, preferences,
+  a digest mismatch deleting the file, and flat and one-folder archives
+  (including IC's real `.zip`) unpacked beside a pretend install. The worker-thread
+  runner is covered too.
+- **The real feed, probed:** a `--probe` mode reads IC 0.3.0's feed through the
+  client. It offers the zip on Windows and the APK on Android to 0.2.0, and
+  nothing to 0.3.0.
+- **Android:** compiled with the NDK and **never run on a device**.
+
+**Void Mago** stays build-time and the owner of the format. IC's release script
+runs `mago feed` for the document and fills in the zip and APK names, because Mago
+names Windows artifacts `-setup.exe` and everything else `.tar.gz`. Asked of Mago:
+`../VoidMago/MESSAGE_FOR_VOIDMAGO_maiz-updates-read-your-feed-now-and-two-asks-2026-09-21.md`
+(declared artifact names; a `scan` column bug).
+
+**A correction for the author:** the 0.2.0 APK never had networking; hidden
+buttons were not what stopped the test. Phone collaboration waits on Q36 (the LAN
+socket layer).
+
+Suite: **19/19 gating** (new: `update_smoke`; `touch_smoke` grew), duo selftest
+17/17, `reduce_conformance` unchanged at 17/25.

@@ -151,6 +151,18 @@ if(NOT MSVC)
   target_compile_options(voidmaiz_lan PRIVATE -Wall -Wextra)
 endif()
 
+# An application updating itself (okf/concepts/updates.md): asking permission,
+# fetching Void Mago's void-updates.json, deciding, downloading, verifying, and
+# handing the verified file to the platform. UI-free; the prompt is in
+# voidmaiz_view. Its own target so an application that never updates links no
+# network code.
+add_library(voidmaiz_update STATIC src/update/update.cpp)
+target_include_directories(voidmaiz_update PUBLIC include PRIVATE vendor)
+target_link_libraries(voidmaiz_update PUBLIC voidmaiz) # shares voidmaiz's cJSON objects
+if(NOT MSVC)
+  target_compile_options(voidmaiz_update PRIVATE -Wall -Wextra)
+endif()
+
 # ── The reduce executor (application-side component; the canvas never calls it)
 add_library(voidmaiz_reduce STATIC src/reduce/reduce.cpp)
 target_include_directories(voidmaiz_reduce PUBLIC include PRIVATE vendor)
@@ -253,10 +265,11 @@ add_library(voidmaiz_view STATIC
   src/view/inspector.cpp
   src/view/mobile.cpp
   src/view/netview.cpp
+  src/view/updateview.cpp
   src/view/widget.cpp
   src/view/widgets.cpp
 )
-target_link_libraries(voidmaiz_view PUBLIC voidmaiz voidmaiz_imgui)
+target_link_libraries(voidmaiz_view PUBLIC voidmaiz voidmaiz_imgui voidmaiz_update)
 if(NOT MSVC)
   target_compile_options(voidmaiz_view PRIVATE -Wall -Wextra)
 endif()
@@ -351,6 +364,10 @@ add_test(NAME collab_smoke COMMAND maiz_collab_smoke)
 add_executable(maiz_wires_smoke tests/wires_smoke.cpp)
 target_link_libraries(maiz_wires_smoke PRIVATE voidmaiz_reduce)
 add_test(NAME wires_smoke COMMAND maiz_wires_smoke)
+
+add_executable(maiz_update_smoke tests/update_smoke.cpp)
+target_link_libraries(maiz_update_smoke PRIVATE voidmaiz_update)
+add_test(NAME update_smoke COMMAND maiz_update_smoke)
 
 add_executable(maiz_lan_smoke tests/lan_smoke.cpp)
 target_link_libraries(maiz_lan_smoke PRIVATE voidmaiz_lan)

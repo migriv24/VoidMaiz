@@ -25,6 +25,8 @@ static void check(bool ok, const std::string& what) {
     if (!ok) ++failures;
 }
 
+#define CHECK(cond) check((cond), #cond) // the expression is the description
+
 static bool has(const TouchFrame& f, TouchGesture g) {
     for (const auto& e : f.events)
         if (e.kind == g) return true;
@@ -372,6 +374,55 @@ int main() {
     test_cancel_releases_everything();
     test_camera_pan_and_pinch();
     test_profile_is_physical();
+
+    // ── screens, classified in dp (the 0.2.0 APK laid a 317-dp phone out like
+    //    a desktop) ───────────────────────────────────────────────────────────
+    {
+        // a 1080x2400 phone at the Android shell's scale (420/160 * 1.3 = 3.41)
+        LayoutClass p = classify_layout(1080, 2400, 3.41f, true);
+        CHECK(p.form == FormFactor::Phone && p.orientation == Orientation::Portrait);
+        CHECK(p.compact && p.narrow);
+        CHECK(p.width_dp > 300 && p.width_dp < 330);
+        // …rotated: still a phone (the short side decides), now landscape, not narrow
+        LayoutClass l = classify_layout(2400, 1080, 3.41f, true);
+        CHECK(l.form == FormFactor::Phone && l.orientation == Orientation::Landscape);
+        CHECK(l.compact && !l.narrow);
+        // a tablet
+        LayoutClass t = classify_layout(1600, 2560, 2.0f, true);
+        CHECK(t.form == FormFactor::Tablet && !t.compact);
+        // a duo-bench half on a desktop: not touch, but narrow
+        LayoutClass d = classify_layout(560, 1500, 1.0f, false);
+        CHECK(d.form == FormFactor::Desktop && d.narrow);
+        CHECK(classify_layout(100, 100, 0.0f, false).width_dp == 100); // bad scale = 1
+    }
+
+    // ── a row of actions: never clipped, the important ones stay ────────────
+    {
+        // step(0) undo(1) redo(2) reduce(3) add(4) clean(6), 60 px each, 8 px gaps
+        std::vector<ActionSpec> items = {{60, 0}, {60, 3}, {60, 1}, {60, 2}, {60, 4}, {60, 6}};
+        ActionPlan all = plan_action_bar(items, 1000, 40, 8);
+        CHECK(all.visible.size() == 6 && all.overflow.empty());
+
+        // 250 px: the overflow button (40) plus three items (3 * 68 = 204)
+        ActionPlan some = plan_action_bar(items, 250, 40, 8);
+        CHECK(some.visible == (std::vector<int>{0, 2, 3})); // priorities 0,1,2, original order
+        CHECK(some.overflow == (std::vector<int>{1, 4, 5}));
+        CHECK(some.visible.size() + some.overflow.size() == items.size());
+
+        // pinned beats priority
+        items[5].pinned = true;
+        ActionPlan pinned = plan_action_bar(items, 250, 40, 8);
+        CHECK(pinned.visible == (std::vector<int>{0, 2, 5}));
+
+        // nothing fits beside the button: everything overflows, nothing is lost
+        ActionPlan none = plan_action_bar(items, 50, 40, 8);
+        CHECK(none.visible.empty() && none.overflow.size() == 6);
+
+        // exactly fits without an overflow button: no button
+        std::vector<ActionSpec> two = {{50, 0}, {50, 1}};
+        ActionPlan exact = plan_action_bar(two, 108, 40, 8);
+        CHECK(exact.visible.size() == 2 && exact.overflow.empty());
+    }
 
     if (failures) {
         std::printf("touch_smoke: %d FAILED\n", failures);
