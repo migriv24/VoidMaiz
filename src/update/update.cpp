@@ -143,7 +143,17 @@ std::string platform_tag() {
     return "macos-x64";
 #endif
 #else
+    /* Linux says which ARCHITECTURE it is. It used to answer "linux-x64" on
+     * every machine, which on an arm64 board (a Raspberry Pi — exactly the
+     * third device this was wanted for) means being offered an x86 binary that
+     * cannot run. Found 2026-09-23, building the first Linux release. */
+#if defined(__aarch64__)
+    return "linux-arm64";
+#elif defined(__x86_64__)
     return "linux-x64";
+#else
+    return "linux-other";
+#endif
 #endif
 }
 

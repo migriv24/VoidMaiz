@@ -7038,3 +7038,53 @@ first, and looked for a moment like a dropped link.
 Cases 17–25 arrived in Void Core's shared corpus on 2026-09-01 (boxes, a
 reserved separator, `patch` content) and our C++ reducer has never implemented
 them. It is not a regression from any of this work, and it is not a small job.
+
+## 2026-09-23: A Linux build somebody can actually download, and the three ways it did not start
+
+The author: *"i want to actually download something from the github releases and
+run it. i don't want a different kind of install that won't actually work."*
+
+That sentence is the whole specification, and meeting it took more than adding a
+`.tar.gz` to a release. The build was made in an **Ubuntu 20.04 container**
+(glibc 2.31, with GCC 11 and CMake from PPAs on top: new tools, old runtime
+floor), and then **downloaded from the releases page into a clean container that
+has no compiler and no dev packages** — a machine like the author's. It failed
+there three times before it worked, and every failure was the same shape: a
+thing this machine has and a stranger's does not.
+
+1. **`GLIBCXX_3.4.29 not found`.** Built with GCC 11 against a machine carrying
+   GCC 9's `libstdc++`. Fixed by linking the C++ runtime statically
+   (`-static-libstdc++ -static-libgcc`); glibc stays dynamic, which is why the
+   build machine's glibc is the floor and why it is a deliberately old one.
+2. **`libOpenGL.so.0: cannot open shared object file`.** CMake prefers glvnd's
+   split GL libraries when it can see them, and the glvnd packages are not on
+   every desktop. `OpenGL_GL_PREFERENCE LEGACY` links the classic `libGL.so.1`,
+   which every driver provides. **This is the one a test would not have caught**
+   — it only appears on a machine that has OpenGL but not that packaging.
+3. **`libvoidcore.so: cannot open shared object file`**, with the library
+   sitting right beside the binary. Linux does not search the executable's own
+   directory. `$ORIGIN` in the rpath fixes it, and it matters twice: for the
+   download, and for the **updater**, which unpacks a new version into a folder
+   and launches it from there.
+
+Two more found on the way: `voidmaiz_update` never linked **pthread** (Windows
+and glibc ≥ 2.34 fold it into libc and say nothing; glibc 2.31 does not), and
+GLFW now builds **Wayland and X11** by default, wanting `wayland-scanner` at
+build time and the wayland client libraries at run time — turned off, since
+every Wayland desktop ships XWayland.
+
+And one that would have shipped the wrong file to the right person:
+`platform_tag()` answered **`linux-x64` on every Linux**, including arm64. A
+Raspberry Pi — the third device this was all for — would have been offered an
+x86 binary by its own updater. It now answers `linux-arm64` where it should.
+
+**Measured, in a clean container, from the published URL:** the app starts and
+exits cleanly on Ubuntu 20.04 and 24.04, the duo selftest is 17/17, and two real
+processes over real sockets converge to identical nets. The recipe is
+`tools/release_linux_docker.sh` in Interaction Combinators rather than a note in
+a transcript, and `package_release.ps1 -FeedOnly` puts artifacts built elsewhere
+into the feed without rebuilding anything.
+
+Also: this repository did not ignore `MESSAGE_FOR_*.md`, which Interaction
+Combinators and Void Hormiga both do, and two were sitting untracked in the root
+where one `git add -A` would have published them. It does now.

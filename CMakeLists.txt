@@ -161,6 +161,12 @@ endif()
 add_library(voidmaiz_update STATIC src/update/update.cpp)
 target_include_directories(voidmaiz_update PUBLIC include PRIVATE vendor)
 target_link_libraries(voidmaiz_update PUBLIC voidmaiz) # shares voidmaiz's cJSON objects
+# It checks and downloads on a thread, so it needs pthread where that is a
+# separate library. Windows and glibc ≥ 2.34 fold it into libc and never said a
+# word; glibc 2.31 (Ubuntu 20.04, Debian 11 — what a portable Linux build should
+# target) fails to link with "undefined reference to pthread_create".
+find_package(Threads REQUIRED)
+target_link_libraries(voidmaiz_update PUBLIC Threads::Threads)
 if(NOT MSVC)
   target_compile_options(voidmaiz_update PRIVATE -Wall -Wextra)
 endif()
@@ -247,8 +253,26 @@ else()
   set(GLFW_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
   set(GLFW_BUILD_DOCS     OFF CACHE BOOL "" FORCE)
   set(GLFW_INSTALL        OFF CACHE BOOL "" FORCE)
+  # On Linux, X11 only. GLFW builds BOTH backends by default, which needs
+  # wayland-scanner and the wayland protocol packages at build time and the
+  # wayland client libraries at run time — a portable binary that then refuses
+  # to start on a machine without them (found 2026-09-23, building the
+  # downloadable Linux release). Every Wayland desktop ships XWayland, so X11 is
+  # the one that runs everywhere. A host that wants native Wayland turns this
+  # back on and accepts the dependencies.
+  if(UNIX AND NOT APPLE)
+    set(GLFW_BUILD_WAYLAND OFF CACHE BOOL "" FORCE)
+    set(GLFW_BUILD_X11     ON  CACHE BOOL "" FORCE)
+  endif()
   add_subdirectory(vendor/glfw)
 
+  # Link the CLASSIC libGL.so.1, not glvnd's libOpenGL.so.0 + libGLdispatch.
+  # CMake prefers GLVND when it can, and the result fails to start on a machine
+  # that has GL but not the glvnd packages — "libOpenGL.so.0: cannot open shared
+  # object file", from a downloaded build, on a normal desktop (Ubuntu 20.04
+  # without libopengl0; found 2026-09-23 by downloading our own release into a
+  # clean container). libGL.so.1 is provided by every driver, glvnd or not.
+  set(OpenGL_GL_PREFERENCE LEGACY)
   find_package(OpenGL REQUIRED)
 
   add_library(voidmaiz_imgui STATIC
