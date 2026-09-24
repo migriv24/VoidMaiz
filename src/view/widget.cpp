@@ -6,6 +6,7 @@
  * kit is one implementation with two frames around it. */
 #include "voidmaiz/widget.hpp"
 #include "voidmaiz/gesture.hpp"
+#include "voidmaiz/textinputview.hpp" // text_input_kind: every field tells the keyboard what it is
 
 #include <algorithm>
 #include <cmath>
@@ -160,6 +161,9 @@ bool widget_field_text(WidgetContext& ctx, const SceneNode& node, const char* fi
          * value then compiles nothing). */
         bool entered = ImGui::InputText(lbl.c_str(), buf, sizeof buf,
                                         ImGuiInputTextFlags_EnterReturnsTrue);
+        // a `phone` field gets a dial pad and an `email` field an @, on any
+        // platform keyboard (okf/concepts/text-input.md): registration picks it
+        text_input_kind(input_kind_for(field_key));
         if ((entered || ImGui::IsItemDeactivatedAfterEdit()) && projected != buf) {
             ctx.commands.push_back(commit_value(node, *f, buf));
             committed = true;
@@ -260,6 +264,7 @@ bool widget_field_multiline(WidgetContext& ctx, const SceneNode& node, const cha
             lbl.c_str(), buf, sizeof buf, area,
             ImGuiInputTextFlags_EnterReturnsTrue); // multiline: Ctrl+Enter commits,
                                                    // plain Enter stays a newline
+        text_input_kind(InputKind::Multiline);     // a phone keyboard's newline key
         if ((chorded || ImGui::IsItemDeactivatedAfterEdit()) && projected != buf) {
             ctx.commands.push_back(compile_set(node.name, field_key, buf));
             committed = true;

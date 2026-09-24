@@ -125,8 +125,8 @@ Next, roughly in order of pull:
 - **Haptic feedback sink** — designed for XR (gesture events → a host channel,
   symmetric with the log sink) and pulled forward by mobile, where a verdict
   buzz is the cheapest possible confirmation.
-- **Soft keyboard / IME** — **Q29**, a ground-rule question before it is a
-  feature: the platform IME costs the zero-Java claim.
+- ~~**Soft keyboard / IME**~~ — **built 2026-09-23**: the platform keyboard as
+  a holiday ([text input](/concepts/text-input.md)). Q29 is answered.
 - **Responsive pane layout** — **Q28**, leaning NO. The pieces shipped; the
   engine waits for a second host writing the same twenty lines.
 

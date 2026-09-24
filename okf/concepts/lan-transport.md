@@ -17,6 +17,35 @@ The author, 2026-09-22:
 No apology needed: the question is the good one, and it has a clean answer that
 has been implied by every piece built so far.
 
+> **Direction, 2026-09-23 (the author, in a Void Hormiga session): all
+> device-to-device networking moves onto Reticulum, with Void Palabra as its Void
+> translation** (`../VoidPalabra/okf/concepts/reticulum.md`; a short-lived
+> sibling, Void Snape, was archived the same day). Reticulum brings discovery,
+> identity, encryption and every medium. Its C++ implementation
+> (microReticulum) is host-driven, so **these sockets become Reticulum
+> interfaces** rather than disappearing, and `LanSession`'s unencrypted peer
+> traffic retires. What networking *looks like* (presence, the member list, the
+> settings) stays Void Maiz's. Recorded here so the page below is read as
+> history.
+>
+> **Built 2026-09-24: `RnsSession`** ([`include/voidmaiz/rnslink.hpp`](../../include/voidmaiz/rnslink.hpp),
+> in `voidmaiz_net` when `MAIZ_RETICULUM` is on). It is
+> `LanSession`'s job done over Reticulum, through Palabra's
+> `voidpalabra_reticulum`, and it keeps `LanSession`'s shape (the same join flow,
+> the same `LanEvent` and `LanFrame`, links named `rns:<peer id>`), so an
+> application's frame loop does not change. `MAIZ_RETICULUM` is on by default,
+> desktop and Android alike. Discovery is Reticulum announces
+> carrying what a beacon carried. Joining is a link on which the joiner PROVES its
+> identity, and a person still presses Allow. **What changed:** the bytes are
+> sealed; "allowed" is kept by proven identity, not by a claimed id; a dead link
+> is found by Reticulum's keepalives; and "beacon out, unicast back" moved into
+> the UDP interface (`learn_peers`). **Interaction Combinators moved onto it
+> the same day, Reticulum only** (the author's answer to Q37; IC 0.6.0), and
+> two IC processes on one machine synced a net both ways through it. On
+> Android it compiles and links into IC's APK, but it has never started on a
+> device. `LanSession` stays in the library for any application that has not
+> moved.
+
 # The three owners
 
 **Void Maiz owns reaching a device.** Sockets, broadcast and multicast,

@@ -171,7 +171,13 @@ void end_overflow_menu();
  * off at the panel edge (seen in the update dialog's first screenshot). */
 void dim_wrapped(const char* text);
 
-/* ── a keyboard, drawn (Q29's lean, built 2026-09-22) ────────────────────────
+/* ── a keyboard, drawn: THE FALLBACK (Q29's lean, built 2026-09-22) ──────────
+ * Since 2026-09-23 the keyboard is the PLATFORM's (voidmaiz/textinput.hpp,
+ * okf/concepts/text-input.md): the author ruled that a drawn keyboard is not
+ * what people should type on. This one remains for a touch host with no
+ * platform keyboard (a plain NativeActivity, a kiosk, a VR panel). Never run
+ * both. */
+/* ── (the drawn keyboard, as first written) ──────────────────────────────────
  * A phone running a Void Maiz application has no system keyboard: showing
  * Android's means Java through JNI, and the APK's whole shape is that there is
  * none. So the library draws one and feeds ImGui the same events a real keyboard

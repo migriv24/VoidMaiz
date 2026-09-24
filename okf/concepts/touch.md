@@ -147,7 +147,7 @@ about each. **Built** means it is in `voidmaiz/mobile.hpp` and compiles today.
 | **pinch / two-finger pan / rotate** | the camera, compiling the same command the wheel does; rotate is unclaimed and waiting for the backlog's shaped-node rotate gesture | **built** |
 | **edge-swipe back** | leaving a subgraph — the mantle stack is exactly a navigation stack. Opt-in (`edge_mm`, default 0) so nobody discovers that the leftmost node cannot be dragged | **built** |
 | **fling / momentum** | reported as a `Fling` event with velocity; the canvas does not yet coast, because inertia is an animation and `CanvasFx` is the place for it | **half**: recognized, not consumed |
-| **soft keyboard / IME** | the command bar is unusable on glass without one, and this is the APK's oldest known gap | **not built — Q29** |
+| **soft keyboard / IME** | the command bar is unusable on glass without one, and this is the APK's oldest known gap | **built 2026-09-23: the platform's own keyboard**, integrated as a holiday ([text input](/concepts/text-input.md)); `maiz::keyboard` stays as the drawn fallback |
 | **action sheet** | a modal list from the bottom edge | staged: a bottom sheet with a fixed detent |
 | **pull-to-refresh** | "re-read the state document" — which in a log-first system is a real gesture, not a hack | staged |
 | **wheel / drum pickers** | dates and enums | staged |

@@ -1,7 +1,7 @@
 ---
 type: Questions
 title: Developer questions
-description: Open decisions for the author, each with a lean. Open — Q29 (how a soft keyboard reaches a Void Maiz application; lean: an ImGui-drawn keyboard first, because the platform IME costs the zero-Java claim), Q27 (should wire routing be a CanvasStyle option; lean: Orthogonal yes but probably per-glyph, not per-canvas, and `Direct` is just correct behaviour rather than a mode), Q26 (where an act rune's role list lives; lean: a `roles` key on the descriptor, asked upstream rather than invented here), Q25 (which mantle a compiled attention graph belongs in; the Device enum is already generalized to an open channel string), Q23 (should JoinFn see the per-source grouping; lean yes, additively, when a client asks), Q22 (should identifiers accept non-ASCII; lean ASCII-only for now, widening is additive), Q21 (may the out-of-tree test harness have dependencies; lean stdlib-only Python), Q20 (whose attention the user action graph records — per-peer or shared across Palabra peers; has a privacy cost, decide before anything materializes one), Q16–Q19 (Void Hormiga's four Allomone boundary questions; the engine is built, the calls are the author's), Q12 (widget kit — ImGui-composed vs sanctioned Qt-class adapter), Q13 (surface-census trigger), Q14 (where a census bundle lands), Q15 (retarget moves to `place` now that Core 0.2.5 landed — takes moves out of undo). Q11 (workspace rung) decided 2026-07-20: enable ImGui docking. Q31–Q35 (collaborative canvas) decided 2026-09-20: the author accepted every lean. Q28 decided 2026-09-21: layout mechanisms in the library, layouts in the host. Q36 decided 2026-09-22: the LAN socket layer is voidmaiz_lan + LanSession.
+description: Open decisions for the author, each with a lean. Open — Q27 (should wire routing be a CanvasStyle option; lean: Orthogonal yes but probably per-glyph, not per-canvas, and `Direct` is just correct behaviour rather than a mode), Q26 (where an act rune's role list lives; lean: a `roles` key on the descriptor, asked upstream rather than invented here), Q25 (which mantle a compiled attention graph belongs in; the Device enum is already generalized to an open channel string), Q23 (should JoinFn see the per-source grouping; lean yes, additively, when a client asks), Q22 (should identifiers accept non-ASCII; lean ASCII-only for now, widening is additive), Q21 (may the out-of-tree test harness have dependencies; lean stdlib-only Python), Q20 (whose attention the user action graph records — per-peer or shared across Palabra peers; has a privacy cost, decide before anything materializes one), Q16–Q19 (Void Hormiga's four Allomone boundary questions; the engine is built, the calls are the author's), Q12 (widget kit — ImGui-composed vs sanctioned Qt-class adapter), Q13 (surface-census trigger), Q14 (where a census bundle lands), Q15 (retarget moves to `place` now that Core 0.2.5 landed — takes moves out of undo). Q11 (workspace rung) decided 2026-07-20: enable ImGui docking. Q31–Q35 (collaborative canvas) decided 2026-09-20: the author accepted every lean. Q28 decided 2026-09-21: layout mechanisms in the library, layouts in the host. Q36 decided 2026-09-22: the LAN socket layer is voidmaiz_lan + LanSession. Q29 decided 2026-09-23: the platform keyboard, integrated as a holiday (concepts/text-input.md); the drawn keyboard is the fallback.
 tags: [status:current, audience:dev, confidence:asserted]
 timestamp: 2026-08-09T00:00:00Z
 ---
@@ -10,46 +10,6 @@ Open decisions, with leans so a non-answer has a sensible default. Answer inline
 in chat, or via FaultSack notes; answers fold into concepts and clear from here.
 
 # Open
-
-- **Q29 — how does a soft keyboard reach a Void Maiz application?** Raised
-  2026-09-13 while building the touch layer. It is the APK's oldest known gap
-  (v1, 2026-07-14: *"no soft keyboard; Save As pre-fills a timestamp name; the
-  command bar is desktop-only until an IME shim lands"*), and on a phone it is
-  not a polish item — **the command bar is the CLI inside the UI, and without an
-  IME commitment 2's showpiece is desktop-only.** Every text field, every rune
-  name, every `set` of a string value is behind the same wall.
-
-  The reason it is a question and not a backlog entry is **ground rule 5 and the
-  zero-Java claim**. Showing Android's IME means `InputMethodManager`, which is
-  Java, reached through JNI. The APK's proudest structural fact is that it
-  shipped with *zero Java and zero Gradle* — a `hasCode=false` NativeActivity
-  manifest and a packaging script — and [substrates](/concepts/substrates.md)
-  records that as the proof the C++20 rule survives. Three answers:
-
-  (a) **JNI call-out from the shell.** ~40 lines of `ANativeActivity`-JNI to
-      toggle the IME and pump `AInputQueue` key events into ImGui. No Java
-      *source*, but it is logic calling into the platform's Java runtime, so the
-      claim becomes "no Java source" rather than "no Java" — a weaker sentence
-      that we would have to say honestly every time.
-
-  (b) **An on-screen keyboard drawn in ImGui.** Zero platform surface, works on
-      every substrate including a VR panel and a kiosk, and it is a *widget* —
-      which is the kind of thing this library already builds. Costs: no
-      autocorrect, no swipe, no language layouts, no accessibility integration,
-      and users hate a fake keyboard for anything longer than a name. But a
-      command bar is not prose: it is short, ASCII, and has a known vocabulary,
-      which is the one case where a custom keyboard can be *better* (a verb row
-      beats a QWERTY guess).
-
-  (c) **Both, chosen per field** — the platform IME for free text, the compact
-      command keyboard for the command bar.
-
-  **Lean: (b) first, then (c) if a host asks for prose entry.** It keeps the
-  platform surface at zero, it is testable, it serves substrates that have no
-  IME at all, and it makes the command bar *good* on glass rather than merely
-  possible. But this is exactly the kind of call the author makes — it trades a
-  ground rule against a headline feature, and (a) is what every other project
-  would do. See [touch](/concepts/touch.md).
 
 - **Q27 — should wire routing be a `CanvasStyle` option?** Raised 2026-09-04 by
   Void Mago, the first client whose graph is entirely loose wires. They proposed:
@@ -413,6 +373,19 @@ in chat, or via FaultSack notes; answers fold into concepts and clear from here.
   bumping our floor from 0.2.4 to 0.2.5 (0.2.6 adds `mantle rm`/`rename`).
 
 # Decided
+
+## By the author, 2026-09-24 (Reticulum in Interaction Combinators)
+
+- **Q37 (Interaction Combinators onto `RnsSession`, outright or beside
+  `LanSession`): outright, against the lean.** Asked with a lean of "both for
+  one release"; the author chose **Reticulum only**. Done the same day, in
+  Interaction Combinators 0.6.0. Joining is by the list of nets heard on the
+  Wi-Fi, since a code that encodes an IP address means nothing to Reticulum.
+  A request shows a device fingerprint. A phone that slept rejoins its host's
+  destination. `RnsSession::join` became a no-op while an earlier ask to the
+  same host is in flight, because IC retries every few seconds and a handshake
+  takes up to ~13 s to give up. The accepted cost: 0.6 cannot network with 0.5,
+  and `LanSession` is no longer anyone's fallback.
 
 ## By the author, 2026-09-22 (the LAN)
 

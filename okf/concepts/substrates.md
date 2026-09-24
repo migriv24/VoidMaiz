@@ -154,7 +154,11 @@ out of VLS (own repo, own OKF, message files between agents):
   scaffolding with zero logic in them* — like vendored licenses, they don't
   count. **Proven 2026-07-14**: the IC APK shipped with zero Java and zero
   Gradle — a hasCode=false NativeActivity manifest and a packaging script are
-  the entire shim.
+  the entire shim. **Changed 2026-09-23, on the author's call (Q29):** the APK
+  now carries ONE Java class, `org.voidmaiz.MaizActivity`, because an input
+  method cannot type properly into a view that is not a text editor, and only
+  Java can be one. It holds no logic, which is the footnote above, kept. Still
+  no Gradle. See [text input](/concepts/text-input.md).
 - **The web is the real boundary.** Two honest paths, kept as *general*
   options:
   (a) **Emscripten/WASM** — the actual C++ library (voidcore compiles too) in

@@ -7088,3 +7088,154 @@ into the feed without rebuilding anything.
 Also: this repository did not ignore `MESSAGE_FOR_*.md`, which Interaction
 Combinators and Void Hormiga both do, and two were sitting untracked in the root
 where one `git add -A` would have published them. It does now.
+
+## 2026-09-23 — The platform keyboard, as a holiday (Q29 answered)
+
+Written by the Void Hormiga agent, on the author's explicit permission to develop
+Void Maiz directly this session, keeping each repository's work distinct. The
+author reported that Interaction Combinators' drawn keyboard "doesn't work at
+all", and ruled: *"Custom keyboard is too much of a hassle (and other apps
+already deal with that, in fact, we should focus on the integration of the
+keyboard)"*. The framing was also the author's: *"the integration of a keyboard
+is very similar to a holiday is it not? An external domain that has to map onto
+our GUI mantle?"* It is, and it is built that way. See
+[text input](/concepts/text-input.md). **Q29 is answered and cleared.**
+
+**Built:**
+- `voidmaiz/textinput.hpp` + `src/input/textinput.cpp` (UI-free): the pivot
+  (`EditingState`), the pure mapping (`plan_edit`), field kinds
+  (`input_kind_for`), the Android integer tables, and the `TextInputPlatform`
+  interface.
+- `voidmaiz/textinputview.hpp` + `src/view/textinput.cpp`: `text_input_frame`
+  (watches ImGui's active field, drives the platform, emits the plan),
+  `text_input_kind` (a field declares its keyboard), and `android_system_key`
+  (Back → `ImGuiKey_AppBack`, opt-in).
+- `src/input/textinput_android.cpp`: the JNI crossing, through
+  `activity->clazz` and `RegisterNatives`, never `FindClass`.
+- `android/java/org/voidmaiz/MaizActivity.java`, the first Java in a Void Maiz
+  APK, with no logic, and `android/build_java.ps1` (javac + d8, no Gradle).
+- The widget registry tags its fields: `widget_field_text` from the key,
+  `widget_field_multiline` as Multiline.
+- **`IMGUI_USE_WCHAR32`** on `voidmaiz_imgui`, PUBLIC: every emoji typed into
+  any field had been turned into U+FFFD.
+- The drawn keyboard (`maiz::keyboard`) is now documented as the fallback.
+
+**Interaction Combinators**, as the one Android host that can test it today:
+the manifest names `org.voidmaiz.MaizActivity` (`hasCode`, `adjustNothing`),
+`build_apk.ps1` adds the dex, the shell creates the platform keyboard and runs
+`text_input_frame`, and the app draws its own keyboard only when there is none.
+Back is left to the platform there (it exits), on purpose.
+
+**Measured:** `textinput_smoke` (every plan replayed on a model of a field:
+typing, composing, autocorrect, ñ/é/ü/¿, emoji, cursor moves, the integer
+tables); `textinput_view_smoke`, the first test here that runs ImGui (a fake
+platform keyboard typing into a real `InputText`); the full suite 23/24, with
+`reduce_conformance` at its known 17/25; the IC APK builds with the NDK
+(9.96 MB); and `dexdump` shows every Java↔native signature matching the strings
+the `.so` looks up.
+
+**Not witnessed: nobody has typed on a phone with it.** There is no device or
+emulator image on this machine. The first test, with the new IC APK:
+
+1. Tap a text field (Save As, a tag, a rune name). **The phone's own keyboard
+   appears**, and the drawn one does not.
+2. Type a word with autocorrect or a suggestion. **The field shows what the
+   keyboard shows**, and taking a suggestion replaces the word, not the field.
+3. Long-press n for **ñ**, and type **José**. Both appear correctly.
+4. Type an **emoji**. It is kept (it may draw as a box: the font has no emoji
+   glyphs, but the text is right).
+5. Tap in the middle of the text, then type. **The characters go where you
+   tapped.**
+6. Press the keyboard's **Done**. The field commits and the keyboard goes away.
+7. With the keyboard up, **Back** closes the keyboard, not the app.
+
+A "no" on 1 means `showSoftInput` did not take for a view added to a
+NativeActivity window, which is the likeliest failure, and `adb logcat -s
+voidmaiz` will say whether the shim was found. A "no" on 2 or 5 means the
+keyboard and the field disagree about the text, and the fix is in
+`text_input_frame`'s resync.
+
+## 2026-09-24 — RnsSession: the LAN session, over Reticulum
+
+The author, 2026-09-23: *"let's just use reticulum for everything! all our
+netoworking needs, with palabra as its void based translation!"* Void Palabra now
+carries Reticulum (`voidpalabra_reticulum`, a vendored and patched
+microReticulum, proven against the official Python Reticulum; see its
+`okf/concepts/reticulum.md`). This is Void Maiz's side, step 3 of that page's
+order of work, begun.
+
+**Built:** `maiz::RnsSession` ([`include/voidmaiz/rnslink.hpp`](../include/voidmaiz/rnslink.hpp),
+`src/net/rnslink.cpp`), in `voidmaiz_net` when `MAIZ_RETICULUM` is on (the
+default everywhere). Its shape is `LanSession`'s on purpose: `peers`,
+`requests`, `allow`/`deny`, `join`, `send`, `take_frames`, `take_events`, `poll`,
+and the same `LanEvent`/`LanFrame`. So an application's frame loop is unchanged:
+the test's `Device::frame` is `lanlink_smoke`'s, line for line.
+
+- **Discovery:** Reticulum announces (the destination `voidmaiz.<app>`, so only
+  the same app is heard), carrying the beacon's JSON.
+- **Joining:** a link to the host's destination. The joiner PROVES its
+  Reticulum identity on the link, says hello, and the host's person presses
+  Allow or Deny. A frame that arrives before Allow is dropped.
+- **On the link:** one tag byte: `J` hello, `A` allowed, `D` denied, `F` a
+  Palabra frame (a packet, or a Reticulum Resource when it does not fit).
+
+**What changed from `LanSession`, and why:**
+- the bytes are sealed;
+- "allowed" is remembered by PROVEN identity, not by a claimed id (so a
+  stranger claiming an allowed device's id is a new request);
+- a dead link is found by Reticulum's keepalives, not an idle timer here;
+- "beacon out, unicast back" moved into Palabra's UDP interface as
+  `learn_peers`: every datagram also goes, by unicast, to each address heard
+  from lately, so a phone that drops broadcast still hears the desktop.
+
+**Measured:** `rnslink_smoke` runs the host and each other device as SEPARATE
+PROCESSES (Reticulum's transport is process-wide), over real UDP on loopback, in
+about 13 s:
+1. a joiner is allowed by hand, and the document goes both ways;
+2. a stranger is denied, and receives nothing;
+3. the first joiner comes back with the same identity and is let in with no
+   second request.
+
+The suite is otherwise unchanged, with `reduce_conformance` at its known 17/25.
+
+**Found on the way, fixed in Palabra:** a closed link was reported as "closed
+here" on the side that did not close it. Reticulum names the side that closed
+(initiator or destination), not "us" or "them". The test's third device first
+reused the first joiner's replica id with an empty document, which Palabra rightly
+treats as one history. An application persists its replica; the test now gives a
+fresh one and keeps the identity.
+
+**Android:** the vendored microReticulum and `rnslink.cpp` cross-compile for
+arm64 with the NDK, unchanged, and Interaction Combinators' APK builds with
+`MAIZ_RETICULUM` on (9.96 MB: nothing references `RnsSession` yet, so the linker
+leaves it out).
+
+**Not yet:** no application uses `RnsSession`. Interaction Combinators still runs
+`LanSession`, and moving it is Q37 (lean: both for one release, encrypted by
+default). Nothing has crossed two real machines.
+
+## 2026-09-24 (later) — Interaction Combinators onto RnsSession, Reticulum only (Q37)
+
+The author, asked whether Interaction Combinators should keep `LanSession`
+beside the new session for one release: **Reticulum only**. Done the same day,
+as IC 0.6.0. The same release lands IC's platform keyboard (text-input.md).
+
+**Here:** `RnsSession::join` ignores a second ask while one to the same host is
+in flight: it returns true and opens nothing, and `joining(destination)` says so. IC retries a
+lost host every 2 to 8 s. A Reticulum handshake can take about 13 s to give up,
+so without this the retries stacked up parallel links to one host. The ask
+clears when the link comes up, when it closes, or after a minute with no word
+(a path that never arrives reports nothing).
+
+**In IC:** joining is by the list of nets heard on the Wi-Fi, because a join
+code encoded an IP address, and Reticulum has none to encode. A join request
+shows the device's fingerprint (what Reticulum proved) rather than an address.
+A phone that slept rejoins its host's destination. Test flags `--rns-dir`,
+`--rns-port` and `--rns-forward` let two IC processes run on one machine: each
+needs its own identity (the settings folder is shared) and its own port.
+
+**Measured:** two IC windows on one machine, Ana sharing and Bo joining, over
+Reticulum on loopback. Both ended with the identical 13 agents and 12 wires,
+including the wires Bo made after joining, and no merge questions.
+`rnslink_smoke` still passes, and IC's APK builds with the Reticulum stack
+linked (12.6 MB, up from 10.0).

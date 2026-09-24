@@ -111,6 +111,15 @@ persistence are inherited from Void Core rather than bolted on.
 - [Node Blocks](/concepts/node-blocks.md) — the Scratch-like demo target (the
   active work): snap = link, hidden-wire adjacency rendering, connector-shape-
   as-type; the Blockly mapping, the block-as-net model, Phase A/B staging.
+- **[Text input — the platform keyboard as a holiday](/concepts/text-input.md)**
+  (2026-09-23, Q29 answered by the author: *"we should focus on the
+  integration of the keyboard"*). The device controls the keyboard and Void
+  Maiz controls every pixel. An editing state is the pivot, a pure `plan_edit`
+  turns it into keystrokes every ImGui field already accepts, one Java class
+  is the Android crossing, and registration picks the keyboard (a `phone` field
+  gets a dial pad). Also the Flutter investigation (verdict: take its keyboard
+  design, not its runtime) and two finds: emoji were destroyed on input
+  (`IMGUI_USE_WCHAR32` now), and Android's Back reached nothing.
 - **[Touch](/concepts/touch.md)** — what a finger changes and what it does not
   (opened 2026-09-13, ahead of Void Hormiga going mobile). The **deferred
   press**: tap, drag and long press are told apart BEFORE a pointer is
@@ -164,7 +173,9 @@ persistence are inherited from Void Core rather than bolted on.
   content. 33 numbered edge cases. Questions Q31–Q35.
 - **[The LAN transport, and who owns it](/concepts/lan-transport.md)**
   (2026-09-22, answering the author's "i don't know the ownership of these
-  things"): **Void Maiz owns reaching a device** (sockets, discovery, multicast
+  things"; **2026-09-24: `RnsSession`**, the same session over Reticulum,
+  encrypted, with "allowed" kept by proven identity, and measured across
+  processes by `rnslink_smoke`): **Void Maiz owns reaching a device** (sockets, discovery, multicast
   locks, radios — none of it knows what a document is), **Palabra owns what
   crosses**, **the app owns who may join**. Two Android phones with no router:
   a **hotspot works today with no code** (they land on an ordinary subnet, so

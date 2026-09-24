@@ -113,6 +113,7 @@ add_library(voidmaiz STATIC
   src/gesture/wires.cpp
   src/gesture/rules.cpp
   src/gesture/tags.cpp
+  src/input/textinput.cpp
   src/touch/touch.cpp
   src/presence/presence.cpp
   src/presence/claims.cpp
@@ -127,6 +128,12 @@ target_include_directories(voidmaiz
   PRIVATE vendor
 )
 target_link_libraries(voidmaiz PUBLIC voidallomone)
+# The keyboard holiday's Android crossing (okf/concepts/text-input.md): JNI to
+# org.voidmaiz.MaizActivity. UI-free, so it lives here and not in the view.
+if(ANDROID)
+  target_sources(voidmaiz PRIVATE src/input/textinput_android.cpp)
+  target_link_libraries(voidmaiz PUBLIC android log)
+endif()
 # VC_DLL: consuming the core as a shared library on Windows (dllimport) —
 # not on Android, where the core is compiled in statically.
 # CJSON_HIDE_SYMBOLS: mirror the core — cJSON stays internal.
@@ -213,13 +220,28 @@ endif()
 # already compile cJSON: one copy per process.
 set(VOIDPALABRA_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../VoidPalabra" CACHE PATH
     "Path to the Void Palabra repository (optional: enables voidmaiz_net)")
+# Reticulum (2026-09-23: "let's just use reticulum for everything!"): Palabra's
+# optional companion voidpalabra_reticulum carries it, and voidmaiz/rnslink.hpp
+# (RnsSession) is LanSession's job done over it. ON everywhere: the vendored
+# microReticulum cross-compiles for Android arm64 with the NDK unchanged
+# (measured 2026-09-24).
+option(MAIZ_RETICULUM "voidmaiz_net carries RnsSession (Reticulum, through Void Palabra)" ON)
 if(EXISTS "${VOIDPALABRA_ROOT}/include/voidpalabra/sync.hpp")
   set(VOIDPALABRA_VENDOR_CJSON OFF CACHE BOOL "" FORCE)
+  set(VOIDPALABRA_RETICULUM ${MAIZ_RETICULUM} CACHE BOOL "" FORCE)
   add_subdirectory("${VOIDPALABRA_ROOT}" voidpalabra)
   add_library(voidmaiz_net STATIC src/net/net.cpp src/net/lanlink.cpp)
   target_include_directories(voidmaiz_net PUBLIC include PRIVATE vendor)
   target_link_libraries(voidmaiz_net PUBLIC voidmaiz voidmaiz_lan voidpalabra::voidpalabra)
   target_compile_definitions(voidmaiz_net PRIVATE CJSON_HIDE_SYMBOLS)
+  if(MAIZ_RETICULUM AND TARGET voidpalabra_reticulum)
+    target_sources(voidmaiz_net PRIVATE src/net/rnslink.cpp)
+    target_link_libraries(voidmaiz_net PUBLIC voidpalabra::reticulum)
+    target_compile_definitions(voidmaiz_net PUBLIC VOIDMAIZ_RETICULUM=1)
+    set(VOIDMAIZ_HAVE_RNS ON)
+  else()
+    set(VOIDMAIZ_HAVE_RNS OFF)
+  endif()
   if(NOT MSVC)
     target_compile_options(voidmaiz_net PRIVATE -Wall -Wextra)
   endif()
@@ -283,6 +305,14 @@ else()
   target_link_libraries(voidmaiz_imgui PUBLIC glfw OpenGL::GL)
 endif()
 
+# 32-bit ImWchar, on every platform (2026-09-23). ImGui's default is 16-bit,
+# which turns every character above U+FFFF - every emoji - into U+FFFD the
+# moment it is TYPED (text already stored as UTF-8 was never touched). A phone
+# keyboard makes emoji ordinary, and a contact whose name is quietly rewritten
+# is data loss, not a display glitch. Pinned by tests/textinput_view_smoke.cpp.
+# PUBLIC, because every file that includes imgui.h must agree on ImWchar.
+target_compile_definitions(voidmaiz_imgui PUBLIC IMGUI_USE_WCHAR32)
+
 # ── The view module: canvas rendering (our code that needs ImGui types) ──────
 add_library(voidmaiz_view STATIC
   src/view/canvas.cpp
@@ -291,6 +321,7 @@ add_library(voidmaiz_view STATIC
   src/view/inspector.cpp
   src/view/mobile.cpp
   src/view/netview.cpp
+  src/view/textinput.cpp
   src/view/updateview.cpp
   src/view/widget.cpp
   src/view/widgets.cpp
@@ -343,6 +374,18 @@ add_test(NAME gesture_smoke COMMAND maiz_gesture_smoke)
 
 # The touch recognizer, driven with literal contact sets — no window, no
 # device. The point of keeping it on the UI-free side is that this test exists.
+# The keyboard holiday's mapping (textinput.hpp), with literal strings and no
+# window: typing, composing, autocorrect, accents, emoji, cursor moves.
+add_executable(maiz_textinput_smoke tests/textinput_smoke.cpp)
+target_link_libraries(maiz_textinput_smoke PRIVATE voidmaiz)
+add_test(NAME textinput_smoke COMMAND maiz_textinput_smoke)
+
+# ...and the same holiday driving a REAL ImGui InputText, headless: a fake
+# platform keyboard types into a field and the field ends up holding it.
+add_executable(maiz_textinput_view_smoke tests/textinput_view_smoke.cpp)
+target_link_libraries(maiz_textinput_view_smoke PRIVATE voidmaiz_view)
+add_test(NAME textinput_view_smoke COMMAND maiz_textinput_view_smoke)
+
 add_executable(maiz_touch_smoke tests/touch_smoke.cpp)
 target_link_libraries(maiz_touch_smoke PRIVATE voidmaiz)
 add_test(NAME touch_smoke COMMAND maiz_touch_smoke)
@@ -416,6 +459,21 @@ if(VOIDMAIZ_HAVE_NET)
   target_link_libraries(maiz_lanlink_smoke PRIVATE voidmaiz_net)
   target_include_directories(maiz_lanlink_smoke PRIVATE vendor)
   add_test(NAME lanlink_smoke COMMAND maiz_lanlink_smoke)
+
+  # the same over Reticulum: host and joiners are separate PROCESSES (Reticulum's
+  # transport is process-wide), real UDP on loopback, join / Allow / Deny / back
+  if(VOIDMAIZ_HAVE_RNS)
+    add_executable(maiz_rnslink_smoke tests/rnslink_smoke.cpp)
+    target_link_libraries(maiz_rnslink_smoke PRIVATE voidmaiz_net)
+    target_include_directories(maiz_rnslink_smoke PRIVATE vendor)
+    if(MINGW)
+      # it starts itself as a child; a PATH holding another MinGW's libstdc++
+      # would break the child at load (found in Void Palabra's peer, 2026-09-23)
+      target_link_options(maiz_rnslink_smoke PRIVATE -static)
+    endif()
+    add_test(NAME rnslink_smoke COMMAND maiz_rnslink_smoke)
+    set_tests_properties(rnslink_smoke PROPERTIES TIMEOUT 180)
+  endif()
 endif()
 
 add_executable(maiz_usergraph_smoke tests/usergraph_smoke.cpp)

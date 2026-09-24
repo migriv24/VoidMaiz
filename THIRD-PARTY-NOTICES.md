@@ -18,6 +18,15 @@ MIT and Zlib both require only that the notice go with the source. No font,
 icon set or asset ships in this repository, so there is no SIL OFL or
 CC-licensed material to carry.
 
+## Reticulum, through Void Palabra (desktop builds)
+
+With `MAIZ_RETICULUM` on (the default outside Android), `voidmaiz_net` links Void
+Palabra's `voidpalabra_reticulum`, which vendors microReticulum and microStore
+(Apache-2.0) and Crypto, ArduinoJson, MsgPack, ArxContainer, ArxTypeTraits and
+DebugLog (MIT), some with patches. A binary that links `voidmaiz_net` carries
+their notices: see Void Palabra's `vendor/reticulum/VENDORED.md` and
+`THIRD-PARTY-NOTICES.md`. Nothing of theirs is copied into this repository.
+
 ## Siblings are not vendored
 
 Void Core and Void Allomone are **sibling repositories**, built from their own
