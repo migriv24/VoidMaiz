@@ -348,11 +348,16 @@ int begin_swipe_row(SwipeListState& st, const char* row_id, const std::vector<st
     for (const auto& a : actions)
         drawer += ImGui::CalcTextSize(a.c_str()).x + gs.FramePadding.x * 2.0f + gs.ItemSpacing.x;
 
-    float target = is_open ? -drawer : 0.0f;
-    if (!(st.dragging && st.drag_id == row_id))
-        st.offset = is_open || st.offset != 0.0f
-                        ? approach(is_open ? st.offset : 0.0f, target, 18.0f, io.DeltaTime)
-                        : 0.0f;
+    /* ONE row owns the shared offset: the open one, else the one last dragged
+     * (springing back). Every other row draws undisplaced. Before 2026-09-25
+     * each row eased the shared offset toward its own rest, so in a list of
+     * more than one the rows below the dragged one reset it every frame, and
+     * no drawer ever opened on a phone. */
+    const bool dragging_me = st.dragging && st.drag_id == row_id;
+    const bool owner = row_id == (st.open_id.empty() ? st.drag_id : st.open_id);
+    if (owner && !dragging_me)
+        st.offset = approach(st.offset, is_open ? -drawer : 0.0f, 18.0f, io.DeltaTime);
+    const float off = owner ? std::min(st.offset, 0.0f) : 0.0f;
 
     ImGui::PushID(row_id);
     ImVec2 origin = ImGui::GetCursorScreenPos();
@@ -360,7 +365,7 @@ int begin_swipe_row(SwipeListState& st, const char* row_id, const std::vector<st
     int picked = -1;
 
     // ── the drawer, drawn UNDER the row and revealed by the displacement ─────
-    float shown = is_open || (st.dragging && st.drag_id == row_id) ? -st.offset : 0.0f;
+    float shown = -off;
     if (shown > 1.0f && !actions.empty()) {
         ImGui::SetCursorScreenPos(ImVec2(origin.x + full - drawer, origin.y));
         ImGui::PushClipRect(ImVec2(origin.x + full - shown, origin.y),
@@ -381,13 +386,18 @@ int begin_swipe_row(SwipeListState& st, const char* row_id, const std::vector<st
     }
 
     // ── the row itself, displaced ────────────────────────────────────────────
-    ImGui::SetCursorScreenPos(ImVec2(origin.x + (st.offset < 0 ? st.offset : 0), origin.y));
+    ImGui::SetCursorScreenPos(ImVec2(origin.x + off, origin.y));
     ImGui::InvisibleButton("##swipe", ImVec2(full, h));
     bool active = ImGui::IsItemActive();
+    // a tap anywhere but this row (its drawer included) closes it
+    if (is_open && !st.dragging && io.MouseClicked[0] &&
+        !ImGui::IsMouseHoveringRect(origin, ImVec2(origin.x + full, origin.y + h)))
+        st.open_id.clear();
     if (active && !st.dragging && std::fabs(ImGui::GetMouseDragDelta().x) > 4.0f) {
         st.dragging = true;
         st.drag_id = row_id;
         st.drag_from = is_open ? -drawer : 0.0f;
+        if (!owner) st.offset = 0.0f; // another row's spring-back is abandoned
     }
     if (st.dragging && st.drag_id == row_id) {
         if (active) {
@@ -405,7 +415,7 @@ int begin_swipe_row(SwipeListState& st, const char* row_id, const std::vector<st
 
     // the caller draws the row's content over the invisible button
     ImGui::SetCursorScreenPos(
-        ImVec2(origin.x + (st.offset < 0 ? st.offset : 0) + gs.FramePadding.x,
+        ImVec2(origin.x + off + gs.FramePadding.x,
                origin.y + (h - ImGui::GetTextLineHeight()) * 0.5f));
     return picked;
 }
@@ -627,6 +637,85 @@ void reserve_safe_area(const SafeArea& area) {
         ImGui::End();
     }
     ImGui::PopStyleVar(2);
+}
+
+// ── scrolling under a finger ─────────────────────────────────────────────────
+
+namespace {
+
+bool can_scroll(const ImGuiWindow* w, int axis) {
+    return !(w->Flags & ImGuiWindowFlags_NoScrollWithMouse) && w->ScrollMax[axis] > 0.5f;
+}
+
+/* The window under the finger that can scroll along `axis`: the hovered one or
+ * its nearest child-window ancestor that can (the wheel's own rule). */
+ImGuiWindow* scroll_target(ImGuiWindow* w, int axis) {
+    for (; w; w = w->ParentWindow) {
+        if (can_scroll(w, axis)) return w;
+        if (!(w->Flags & ImGuiWindowFlags_ChildWindow)) break;
+    }
+    return nullptr;
+}
+
+void scroll_by(ImGuiWindow* w, int axis, float delta) {
+    if (axis == 1) ImGui::SetScrollY(w, w->Scroll.y + delta);
+    else ImGui::SetScrollX(w, w->Scroll.x + delta);
+}
+
+} // namespace
+
+void touch_scroll(TouchScrollState& st, float dp, float slop_dp) {
+    ImGuiContext& g = *ImGui::GetCurrentContext();
+    ImGuiIO& io = g.IO;
+    const float dt = io.DeltaTime > 0.0f ? io.DeltaTime : 1.0f / 60.0f;
+
+    if (io.MouseClicked[0]) { // a new finger stops any glide and waits to be read
+        st = TouchScrollState{};
+        st.pressed = true;
+        st.px[0] = io.MousePos.x;
+        st.px[1] = io.MousePos.y;
+        return;
+    }
+
+    if (io.MouseDown[0] && st.pressed && !st.scrolling) {
+        const float dx = io.MousePos.x - st.px[0], dy = io.MousePos.y - st.px[1];
+        if (std::fabs(dx) < slop_dp * dp && std::fabs(dy) < slop_dp * dp) return;
+        st.pressed = false; // decided, one way or the other
+        const int axis = std::fabs(dy) >= std::fabs(dx) ? 1 : 0;
+        ImGuiWindow* w = scroll_target(g.HoveredWindow, axis);
+        if (!w) return; // not a scroll: a swipe, a slider, the canvas
+        st.scrolling = true;
+        st.axis = axis;
+        st.window = w->ID;
+        ImGui::ClearActiveID(); // the pressed button must not click on release
+        scroll_by(w, axis, -(axis ? dy : dx)); // catch up the slop
+        return;
+    }
+
+    ImGuiWindow* w = st.window ? ImGui::FindWindowByID(st.window) : nullptr;
+    if (!w) { st.scrolling = st.gliding = false; return; }
+
+    if (st.scrolling && io.MouseDown[0]) {
+        const float d = st.axis ? io.MouseDelta.y : io.MouseDelta.x;
+        scroll_by(w, st.axis, -d);
+        if (g.ActiveId) ImGui::ClearActiveID(); // nothing may take the finger mid-scroll
+        // smoothed: one jittery frame must not decide the fling
+        st.velocity = st.velocity * 0.7f + (d / dt) * 0.3f;
+        return;
+    }
+
+    if (st.scrolling) { // released: glide if it was flung
+        st.scrolling = false;
+        st.gliding = std::fabs(st.velocity) > 60.0f * dp;
+    }
+    if (st.gliding) {
+        scroll_by(w, st.axis, -st.velocity * dt);
+        st.velocity *= std::exp(-4.0f * dt); // about a second to rest
+        const float pos = w->Scroll[st.axis];
+        if (std::fabs(st.velocity) < 20.0f * dp || (st.velocity > 0 && pos <= 0.0f) ||
+            (st.velocity < 0 && pos >= w->ScrollMax[st.axis]))
+            st.gliding = false;
+    }
 }
 
 #ifndef __ANDROID__

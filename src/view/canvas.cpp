@@ -1055,6 +1055,11 @@ CanvasIO edit_canvas(const char* str_id, const Scene& scene, EditorState& ed,
                     ImGui::OpenPopup("vm-canvas-ctx");
                 }
             }
+            // on glass, a TAP on empty canvas is a press that became a pan and
+            // never moved: it deselects, as a click there does with a mouse
+            if (ed.pan_left && style.touch && !io.KeyAlt && hovered &&
+                dx * dx + dy * dy <= style.click_slop * style.click_slop)
+                ed.selection.clear();
             ed.drag = EditorState::Drag::None;
             ed.pan_left = false;
             if (ed.cam_dirty) flush_camera();
@@ -1235,6 +1240,17 @@ CanvasIO edit_canvas(const char* str_id, const Scene& scene, EditorState& ed,
                                 ed.staged[rider] = {rn->x, rn->y};
                 }
             }
+        } else if (style.touch && !io.KeyShift) {
+            /* ON GLASS A FINGER ON EMPTY CANVAS MOVES THE VIEW (2026-09-25), as
+             * on every map and every photo: a phone has no middle button, no
+             * Alt key and no wheel, so without this the graph could not be
+             * moved at all. The marquee stays one Shift away for a keyboard. */
+            ed.press_node.clear();
+            ed.drag = EditorState::Drag::Pan;
+            ed.pan_sx = io.MousePos.x;
+            ed.pan_sy = io.MousePos.y;
+            ed.pan_right = false;
+            ed.pan_left = true;
         } else {
             ed.press_node.clear(); // an empty-canvas press names no node
             ed.drag = EditorState::Drag::Marquee;

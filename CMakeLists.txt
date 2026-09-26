@@ -114,6 +114,7 @@ add_library(voidmaiz STATIC
   src/gesture/rules.cpp
   src/gesture/tags.cpp
   src/input/textinput.cpp
+  src/input/documents.cpp   # the system picker / save dialog (Android; false elsewhere)
   src/touch/touch.cpp
   src/presence/presence.cpp
   src/presence/claims.cpp

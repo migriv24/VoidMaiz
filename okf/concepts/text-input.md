@@ -136,6 +136,38 @@ keyboard type), to report a moved caret (`updateSelection`), and to hide.
   `adjustNothing`, so the native surface is never panned or resized behind the
   application's back. What to do about the covered strip is the host's call.
 
+# The same crossing, for files (2026-09-25)
+
+`MaizActivity` carries a second holiday now, on the same pattern:
+`voidmaiz/documents.hpp`, **the system's document picker and save dialog**.
+Void Hormiga needed it twice on one day: a phone had no way to add a photo
+("images can't be shared or uploaded"), and a `.miga` database could not get
+onto or off a phone.
+
+- **A request now, a result later.** A pick runs over the paused activity, so
+  nothing returns a path on the calling line: `android_pick_document(activity,
+  request, mime, dest_dir)` starts it; `android_take_document` drains finished
+  ones between frames. A host must never act on a result mid-frame (an arriving
+  database replaces the whole document).
+- **What arrives is a copy.** Java copies the picked bytes into `dest_dir` on a
+  background thread, under the file's display name (made safe and unique), and
+  reports that path. Native code never meets a content URI.
+- **No permission for photos, on purpose.** Android 13+'s photo picker
+  (`ACTION_PICK_IMAGES`) needs none: the person picks, and the pick is the
+  consent. Older Android gets `ACTION_OPEN_DOCUMENT`, the same idea. Asking for
+  the whole library (`READ_MEDIA_IMAGES`) is what the platform tells apps not to
+  do when they only need what a person chooses.
+- **Saving** is `ACTION_CREATE_DOCUMENT`: the system's "save to", which copies a
+  file out to Downloads, a drive or another app.
+- **"Open with"**: `android_opened_document` delivers the file the activity was
+  started or resumed with (a VIEW intent), as request -1, once. A host that
+  wants it declares the intent filter and `launchMode="singleTask"` (so a second
+  open reaches `onNewIntent`), and calls it at start and on every resume.
+
+Off Android every call returns false, and a host uses its own dialog. The same
+rule as the keyboard's: the Java holds no decisions, and FindClass is never
+used from a native thread (`activity->clazz` is).
+
 # The Flutter investigation
 
 The author: *"In general I would like to implement flutter and dart into void

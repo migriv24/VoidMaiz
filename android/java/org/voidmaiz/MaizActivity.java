@@ -1,6 +1,9 @@
 /*
  * MaizActivity — the one piece of Java a Void Maiz APK carries: the system
- * keyboard's side of the text-input holiday (okf/concepts/text-input.md).
+ * keyboard's side of the text-input holiday (okf/concepts/text-input.md), the
+ * safe area, and (2026-09-25) the system's document picker and save dialog
+ * (voidmaiz/documents.hpp), which is how a photo or a file gets on and off a
+ * phone.
  *
  * A NativeActivity cannot receive a keyboard properly. With no View that is a
  * text editor, Android's input methods fall back to sending bare key events,
@@ -34,6 +37,11 @@ package org.voidmaiz;
 
 import android.app.NativeActivity;
 import android.content.Context;
+import android.content.Intent;
+import android.database.Cursor;
+import android.net.Uri;
+import android.provider.MediaStore;
+import android.provider.OpenableColumns;
 import android.graphics.Rect;
 import android.os.Build;
 import android.os.Bundle;
@@ -49,7 +57,14 @@ import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
 import android.view.inputmethod.InputMethodManager;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayDeque;
+import java.util.HashMap;
 
 public class MaizActivity extends NativeActivity {
 
@@ -134,6 +149,159 @@ public class MaizActivity extends NativeActivity {
             }
         }
         return out;
+    }
+
+    // ── documents: the system's picker and save dialog (voidmaiz/documents.hpp) ─
+    /* A pick or a save is a request now and a result later: the system's own UI
+     * runs over this activity, which is paused meanwhile. The picked bytes are
+     * COPIED into a folder native code named, on a background thread, and only
+     * the copy's path is reported, so native code never meets a content URI.
+     * Results wait in a queue until native code asks (maizTakeDocument). */
+
+    static final int DOC_BASE = 0x4d00; // request codes this class owns
+    private final ArrayDeque<String[]> docResults = new ArrayDeque<>();
+    private final HashMap<Integer, String[]> docPending = new HashMap<>();
+
+    private void docResult(int request, String status, String path, String name) {
+        synchronized (docResults) {
+            docResults.add(new String[] {Integer.toString(request), status, path, name == null ? "" : name});
+        }
+    }
+
+    public boolean maizPickDocument(final int request, final String mime, final String destDir) {
+        runOnUiThread(() -> {
+            Intent i;
+            if (mime.startsWith("image/") && Build.VERSION.SDK_INT >= 33) {
+                // the photo picker: no permission, the person picks, the pick is the consent
+                i = new Intent(MediaStore.ACTION_PICK_IMAGES);
+            } else {
+                i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                i.addCategory(Intent.CATEGORY_OPENABLE);
+                i.setType(mime);
+            }
+            docPending.put(request, new String[] {"pick", destDir});
+            try {
+                startActivityForResult(i, DOC_BASE + request);
+            } catch (Exception e) {
+                docPending.remove(request);
+                docResult(request, "error", "", "no app on this device can open that picker");
+            }
+        });
+        return true;
+    }
+
+    public boolean maizSaveDocument(final int request, final String src, final String name, final String mime) {
+        runOnUiThread(() -> {
+            Intent i = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+            i.addCategory(Intent.CATEGORY_OPENABLE);
+            i.setType(mime);
+            i.putExtra(Intent.EXTRA_TITLE, name);
+            docPending.put(request, new String[] {"save", src});
+            try {
+                startActivityForResult(i, DOC_BASE + request);
+            } catch (Exception e) {
+                docPending.remove(request);
+                docResult(request, "error", "", "no app on this device can save a file");
+            }
+        });
+        return true;
+    }
+
+    public String[] maizTakeDocument() {
+        synchronized (docResults) {
+            return docResults.poll();
+        }
+    }
+
+    /* The file this activity was started or resumed WITH (an "Open with" from a
+     * file manager or a chat): copied like a pick, reported as request -1, and
+     * forgotten so a resume does not deliver it twice. */
+    public void maizTakeOpenedDocument(final String destDir) {
+        runOnUiThread(() -> {
+            Intent it = getIntent();
+            if (it == null || !Intent.ACTION_VIEW.equals(it.getAction()) || it.getData() == null) return;
+            final Uri uri = it.getData();
+            setIntent(new Intent()); // consumed
+            copyIn(-1, uri, destDir);
+        });
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent); // the next maizTakeOpenedDocument sees it
+    }
+
+    @Override
+    protected void onActivityResult(int code, int result, Intent data) {
+        final int request = code - DOC_BASE;
+        final String[] p = docPending.remove(request);
+        if (p == null) {
+            super.onActivityResult(code, result, data);
+            return;
+        }
+        if (result != RESULT_OK || data == null || data.getData() == null) {
+            docResult(request, "cancelled", "", "");
+            return;
+        }
+        final Uri uri = data.getData();
+        if (p[0].equals("pick")) {
+            copyIn(request, uri, p[1]);
+        } else {
+            new Thread(() -> {
+                try (InputStream in = new FileInputStream(p[1]);
+                     OutputStream out = getContentResolver().openOutputStream(uri)) {
+                    pipe(in, out);
+                    docResult(request, "ok", uri.toString(), displayName(uri));
+                } catch (Exception e) {
+                    docResult(request, "error", "", String.valueOf(e.getMessage()));
+                }
+            }).start();
+        }
+    }
+
+    private void copyIn(final int request, final Uri uri, final String destDir) {
+        new Thread(() -> {
+            try {
+                File dir = new File(destDir);
+                dir.mkdirs();
+                String name = safeName(displayName(uri));
+                File out = new File(dir, name);
+                int dot = name.lastIndexOf('.');
+                String stem = dot > 0 ? name.substring(0, dot) : name, ext = dot > 0 ? name.substring(dot) : "";
+                for (int n = 2; out.exists(); ++n) out = new File(dir, stem + "-" + n + ext);
+                try (InputStream in = getContentResolver().openInputStream(uri);
+                     OutputStream o = new FileOutputStream(out)) {
+                    pipe(in, o);
+                }
+                docResult(request, "ok", out.getPath(), name);
+            } catch (Exception e) {
+                docResult(request, "error", "", String.valueOf(e.getMessage()));
+            }
+        }).start();
+    }
+
+    private String displayName(Uri uri) {
+        String name = null;
+        try (Cursor c = getContentResolver().query(uri, new String[] {OpenableColumns.DISPLAY_NAME}, null, null, null)) {
+            if (c != null && c.moveToFirst()) name = c.getString(0);
+        } catch (Exception ignored) {
+        }
+        if (name == null || name.isEmpty()) name = uri.getLastPathSegment();
+        return name == null || name.isEmpty() ? "picked" : name;
+    }
+
+    /* A name for OUR folder: no separators, nothing hidden, nothing empty. */
+    static String safeName(String n) {
+        n = n.replaceAll("[/\\\\:*?\"<>|\\p{Cntrl}]", "_");
+        while (n.startsWith(".")) n = n.substring(1);
+        return n.isEmpty() ? "picked" : n;
+    }
+
+    static void pipe(InputStream in, OutputStream out) throws java.io.IOException {
+        if (in == null || out == null) throw new java.io.IOException("the file could not be opened");
+        byte[] buf = new byte[64 * 1024];
+        for (int r; (r = in.read(buf)) > 0;) out.write(buf, 0, r);
     }
 
     // ── native → Java (any thread; the work happens on the UI thread) ────────

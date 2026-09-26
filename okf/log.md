@@ -7279,3 +7279,34 @@ tool's stderr as an error when output is redirected. The method says
 (`content.sides`, a number or a numeric string, clamped to 3 to 24) over its
 glyph's `hints.shape.sides`. Void Hormiga's `poly_router` test node varies it
 per node to stress body geometry and perimeter port anchors across devices.
+
+## 2026-09-25, later — Scrolling under a finger, a swipe row that never worked, files through the system
+
+Void Hormiga's author, on the second APK: *"scrolling doesn't work. this is
+huge"*, and pictures could not be added from a phone. Three pieces here:
+
+**`touch_scroll`** (`mobile.hpp`). ImGui scrolls with a wheel and a finger has
+none, so no list on a phone scrolled at all. A drag decides its axis in the
+first ~8 dp. It scrolls the window under the finger, or its nearest scrollable
+parent, if that window can scroll along the axis. The press is cancelled, so
+the card it started on does not tap, and a release glides. Void Hormiga's shells
+and Interaction Combinators' Android shell call it once a frame.
+
+**The swipe row, fixed.** It had never worked in a list of more than one: every
+row eased the list's one shared offset toward its own rest, and the rows after
+the dragged one reset it each frame. The harness showed the offset pinned at 0
+while the drag delta grew. One row owns the offset now, and a tap outside an
+open row closes it, as the header always promised.
+
+**On glass a finger pans the canvas**: a drag from empty canvas moves the view
+(a tap there deselects); the marquee stays behind Shift.
+
+**The documents holiday** (`voidmaiz/documents.hpp`, `src/input/documents.cpp`,
+and `MaizActivity`): the system's photo picker, open-a-document, save-a-copy-to
+and "Open with", as request-and-result. See
+[text input](/concepts/text-input.md) §"The same crossing, for files". No
+permission for photos, on purpose.
+
+Measured in Void Hormiga's phone harness (scroll, glide, chips sideways, swipe
+to Delete, a tap still opening a card, a photo arriving through a played
+picker). The Java compiles, and both APKs build. Not run on a device.

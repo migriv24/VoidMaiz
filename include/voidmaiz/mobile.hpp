@@ -47,6 +47,39 @@ namespace maiz {
  * and BEFORE any other BeginViewportSideBar. */
 void reserve_safe_area(const SafeArea& area);
 
+/* ── scrolling under a finger ────────────────────────────────────────────────
+ * ImGui scrolls with a mouse WHEEL; a finger on glass has none, so a phone
+ * running a Void Maiz application could not scroll a list at all — Void
+ * Hormiga's author, on the first APK that was otherwise usable: "scrolling
+ * doesn't work. this is huge". This is the missing gesture: drag the content,
+ * let go and it glides on, as every phone list does.
+ *
+ * Call once a frame, right after `ImGui::NewFrame()` (and after
+ * reserve_safe_area), on a touch host only:
+ *
+ *     maiz::touch_scroll(scroll, dp);
+ *
+ * It decides on the first `slop_dp` of movement. A drag mostly along an axis
+ * the window under the finger (or its nearest scrollable parent) can scroll
+ * along becomes a scroll, and the press is CANCELLED — ImGui's active item is
+ * cleared, so the button the finger happened to land on does not click on
+ * release. Anything else (a sideways swipe on a swipe row, a slider, the
+ * canvas, which cannot scroll) is left alone. Windows flagged
+ * NoScrollWithMouse hand the gesture to their parent, as they do the wheel.
+ * The state is pure view ephemera; `scrolling` is true while a finger scrolls,
+ * for a host that wants to suppress something meanwhile. */
+struct TouchScrollState {
+    unsigned window = 0;   // ImGuiID of the window being scrolled (0 = none)
+    bool pressed = false;  // a finger is down and has not been decided
+    bool scrolling = false;
+    bool gliding = false;
+    int axis = 1;          // 0 = x, 1 = y
+    float velocity = 0.0f; // px/s along the axis, for the glide
+    float px[2]{0, 0};     // press position
+};
+
+void touch_scroll(TouchScrollState& st, float dp = 1.0f, float slop_dp = 8.0f);
+
 /* ── the canvas, read by a finger ────────────────────────────────────────────
  * Set the SCREEN-SPACE budgets from the device's physical scale, and nothing
  * else. The deliberate omission is the node geometry (node_w, header_h,
