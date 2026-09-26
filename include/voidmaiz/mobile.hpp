@@ -35,7 +35,17 @@
 #include <string>
 #include <vector>
 
+#include "voidmaiz/safearea.hpp" // SafeArea, android_safe_area (no ImGui there)
+
 namespace maiz {
+
+/* ── the safe area (voidmaiz/safearea.hpp says what it is) ───────────────── */
+
+/* Reserve the safe area of the main viewport, as viewport side bars painted in
+ * the window background colour, so everything placed afterwards (bars, work
+ * area, floating buttons) lives inside it. Call once a frame, after NewFrame
+ * and BEFORE any other BeginViewportSideBar. */
+void reserve_safe_area(const SafeArea& area);
 
 /* ── the canvas, read by a finger ────────────────────────────────────────────
  * Set the SCREEN-SPACE budgets from the device's physical scale, and nothing

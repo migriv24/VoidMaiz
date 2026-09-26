@@ -189,6 +189,17 @@ void apply_glyph_hints(SceneNode& node, const cJSON* descriptor, const cJSON* co
         } else if (shape_kind == "block") {
             node.shape = NodeShape::Block; // statement block (node-blocks.md)
         }
+        /* A RUNE may set its own sides (content.sides, a number or a numeric
+         * string) over its glyph's: Void Hormiga's polygon test node varies the
+         * shape per node to stress body geometry and port anchors across devices
+         * (2026-09-25). Clamped, because a person types it. */
+        if (node.shape == NodeShape::Polygon && content) {
+            const cJSON* s = cJSON_GetObjectItemCaseSensitive(const_cast<cJSON*>(content), "sides");
+            int n = 0;
+            if (cJSON_IsNumber(s)) n = (int)s->valuedouble;
+            else if (cJSON_IsString(s) && s->valuestring) n = std::atoi(s->valuestring);
+            if (n > 0) node.shape_sides = std::clamp(n, 3, 24);
+        }
         const cJSON* rot = cJSON_GetObjectItemCaseSensitive(const_cast<cJSON*>(shape), "rot");
         if (cJSON_IsNumber(rot)) {
             node.rot_auto = false;

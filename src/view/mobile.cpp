@@ -2,6 +2,8 @@
 #include "voidmaiz/mobile.hpp"
 #include "voidmaiz/widgets.hpp" // tool_button
 
+#include "imgui_internal.h" // BeginViewportSideBar
+
 #include <algorithm>
 #include <cfloat>
 #include <cctype>
@@ -221,7 +223,10 @@ bool fab(const char* label, ImVec2 offset) {
     ImGui::PopStyleVar();
     float d = ImGui::GetFrameHeight() * 1.7f;
     ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, d * 0.5f);
+    // the glyph at an icon's size (Material: 24 of 56), not body text's
+    ImGui::PushFont(nullptr, ImGui::GetFontSize() * 1.5f);
     bool hit = ImGui::Button(label, ImVec2(d, d));
+    ImGui::PopFont();
     ImGui::PopStyleVar();
     ImGui::End();
     return hit;
@@ -236,11 +241,17 @@ int speed_dial(const char* str_id, const char* label, const std::vector<std::str
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
         ImGui::Begin(str_id, nullptr, kFloatFlags);
         ImGui::PopStyleVar();
+        /* ONE WIDTH FOR THE WHOLE COLUMN: the widest label's. This used to
+         * right-align each entry against GetWindowWidth(), but the window is
+         * AlwaysAutoResize, so its width came from those same entries: the two
+         * settled at a sliver, and the dial opened as three thin lines nobody
+         * could tap (Void Hormiga's first APK, 2026-09-25: "the add button ...
+         * doesn't work at all"). Equal widths need no alignment at all. */
+        float w = 0.0f;
+        for (const auto& e : entries) w = std::max(w, ImGui::CalcTextSize(e.c_str()).x);
+        w += ImGui::GetStyle().FramePadding.x * 4.0f;
         for (int i = 0; i < (int)entries.size(); ++i) {
-            float w = ImGui::CalcTextSize(entries[i].c_str()).x +
-                      ImGui::GetStyle().FramePadding.x * 2.0f;
-            ImGui::SetCursorPosX(ImGui::GetWindowWidth() - w); // right-align the stack
-            if (ImGui::Button(entries[i].c_str(), ImVec2(w, 0))) {
+            if (ImGui::Button(entries[i].c_str(), ImVec2(w, ImGui::GetFrameHeight() * 1.25f))) {
                 picked = i;
                 open = false;
             }
@@ -591,5 +602,35 @@ int action_bar(const char* str_id, const std::vector<BarAction>& actions, bool t
     ImGui::PopID();
     return pressed;
 }
+
+// ── the safe area ────────────────────────────────────────────────────────────
+
+void reserve_safe_area(const SafeArea& area) {
+    ImGuiViewport* vp = ImGui::GetMainViewport();
+    const ImGuiWindowFlags flags = ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoScrollbar |
+                                   ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoNav |
+                                   ImGuiWindowFlags_NoDecoration;
+    struct Edge {
+        const char* id;
+        ImGuiDir dir;
+        float px;
+    } edges[] = {{"##safe-top", ImGuiDir_Up, area.top},
+                 {"##safe-bottom", ImGuiDir_Down, area.bottom},
+                 {"##safe-left", ImGuiDir_Left, area.left},
+                 {"##safe-right", ImGuiDir_Right, area.right}};
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+    for (const Edge& e : edges) {
+        if (e.px <= 0.0f) continue;
+        // the side bar reserves the edge; being empty, it just paints the background
+        ImGui::BeginViewportSideBar(e.id, vp, e.dir, e.px, flags);
+        ImGui::End();
+    }
+    ImGui::PopStyleVar(2);
+}
+
+#ifndef __ANDROID__
+SafeArea android_safe_area(ANativeActivity*) { return {}; }
+#endif
 
 } // namespace maiz

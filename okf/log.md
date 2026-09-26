@@ -7239,3 +7239,43 @@ Reticulum on loopback. Both ended with the identical 13 agents and 12 wires,
 including the wires Bo made after joining, and no merge questions.
 `rnslink_smoke` still passes, and IC's APK builds with the Reticulum stack
 linked (12.6 MB, up from 10.0).
+
+## 2026-09-25 — The first real phone: the safe area, and a speed dial that opened as slivers
+
+Void Hormiga's author ran its first APK on their phone, a modern all-screen
+Android with gesture navigation, and two of the failures were this library's.
+
+**The safe area.** A NativeActivity's surface runs under the status bar, the
+display cutout and the navigation area. On a gesture phone the bottom strip is
+not tappable at all, because the system takes every touch there as the start of
+a gesture, and Hormiga's navigation bar sat in it (*"i can barely tap on the
+navigation bar at all"*). New:
+- `voidmaiz/safearea.hpp`: `SafeArea` and `android_safe_area(activity)`. It is
+  ImGui-free on purpose, because its Android half lives in the base library.
+- `MaizActivity.maizSafeInsets()`: the system bars and the cutout, and at the
+  bottom the larger of the navigation bar and the mandatory gesture strip.
+- `reserve_safe_area(area)` in `mobile.hpp`: the edges become viewport side
+  bars, reserved before any other, so bars, work area and floating buttons all
+  land inside.
+
+Interaction Combinators' shell uses it too.
+
+**The speed dial.** It right-aligned each entry against `GetWindowWidth()`, but
+its window is `AlwaysAutoResize`, so the width came from those same entries.
+The two settled at a sliver, and Hormiga's "+" opened three thin lines nobody
+could tap. Now the column takes one width, the widest label's. The FAB's glyph
+is drawn at an icon's size rather than body text's.
+
+**Found with a harness.** Hormiga's desktop can now play a phone (screen,
+density, safe area, scripted taps, screenshots). The dial bug was seen there
+before it was fixed.
+
+**A build note:** javac's deprecation note (the pre-Android-11 insets fallback)
+broke `build_java.ps1` under Windows PowerShell 5.1, which treats a native
+tool's stderr as an error when output is redirected. The method says
+`@SuppressWarnings("deprecation")` now; the fallback is deliberate.
+
+**Later the same day:** a rune may set its own polygon sides
+(`content.sides`, a number or a numeric string, clamped to 3 to 24) over its
+glyph's `hints.shape.sides`. Void Hormiga's `poly_router` test node varies it
+per node to stress body geometry and perimeter port anchors across devices.

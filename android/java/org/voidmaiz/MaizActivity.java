@@ -101,6 +101,41 @@ public class MaizActivity extends NativeActivity {
         return (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
     }
 
+    /* THE SAFE AREA (voidmaiz/mobile.hpp, maiz::android_safe_area): pixels at
+     * {left, top, right, bottom} that belong to the system. A NativeActivity's
+     * surface runs under the status bar, the cutout and the navigation area; on a
+     * gesture-navigation phone the bottom strip takes every touch as a gesture.
+     * Bottom is therefore the larger of the navigation bar and the MANDATORY
+     * gesture area. Read-only, and called from the native thread. */
+    @SuppressWarnings("deprecation") // the pre-Android-11 branch: deliberate, and javac's note broke the build script
+    public int[] maizSafeInsets() {
+        int[] out = new int[4];
+        WindowInsets wi = getWindow().getDecorView().getRootWindowInsets();
+        if (wi == null) return out;
+        if (Build.VERSION.SDK_INT >= 30) {
+            android.graphics.Insets bars =
+                wi.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+            android.graphics.Insets gestures = wi.getInsets(WindowInsets.Type.mandatorySystemGestures());
+            out[0] = bars.left;
+            out[1] = bars.top;
+            out[2] = bars.right;
+            out[3] = Math.max(bars.bottom, gestures.bottom);
+        } else {
+            out[0] = wi.getSystemWindowInsetLeft();
+            out[1] = wi.getSystemWindowInsetTop();
+            out[2] = wi.getSystemWindowInsetRight();
+            out[3] = wi.getSystemWindowInsetBottom();
+            if (Build.VERSION.SDK_INT >= 28 && wi.getDisplayCutout() != null) {
+                android.view.DisplayCutout c = wi.getDisplayCutout();
+                out[0] = Math.max(out[0], c.getSafeInsetLeft());
+                out[1] = Math.max(out[1], c.getSafeInsetTop());
+                out[2] = Math.max(out[2], c.getSafeInsetRight());
+                out[3] = Math.max(out[3], c.getSafeInsetBottom());
+            }
+        }
+        return out;
+    }
+
     // ── native → Java (any thread; the work happens on the UI thread) ────────
 
     public void maizShowKeyboard(final int type, final int options, final byte[] text,

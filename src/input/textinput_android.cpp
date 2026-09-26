@@ -18,6 +18,7 @@
 #ifdef __ANDROID__
 
 #include "voidmaiz/textinput.hpp"
+#include "voidmaiz/safearea.hpp" // SafeArea (ImGui-free: this is the base library)
 
 #include <android/log.h>
 #include <android/native_activity.h>
@@ -186,6 +187,40 @@ std::unique_ptr<TextInputPlatform> android_text_input(ANativeActivity* activity)
     }
     if (!registered) return nullptr;
     return std::make_unique<AndroidTextInput>(activity, show, update, hide);
+}
+
+/* The safe area (voidmaiz/mobile.hpp), asked of MaizActivity.maizSafeInsets().
+ * A plain NativeActivity has no such method: all zero, and the host keeps its
+ * whole surface. */
+SafeArea android_safe_area(ANativeActivity* activity) {
+    SafeArea area;
+    if (!activity || !activity->clazz) return area;
+    Env e(activity);
+    if (!e.env) return area;
+    JNIEnv* env = e.env;
+    jclass cls = env->GetObjectClass(activity->clazz);
+    jmethodID m = cls ? env->GetMethodID(cls, "maizSafeInsets", "()[I") : nullptr;
+    if (!m) {
+        env->ExceptionClear();
+        if (cls) env->DeleteLocalRef(cls);
+        return area;
+    }
+    jintArray arr = (jintArray)env->CallObjectMethod(activity->clazz, m);
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        arr = nullptr;
+    }
+    if (arr && env->GetArrayLength(arr) >= 4) {
+        jint v[4] = {0, 0, 0, 0};
+        env->GetIntArrayRegion(arr, 0, 4, v);
+        area.left = (float)v[0];
+        area.top = (float)v[1];
+        area.right = (float)v[2];
+        area.bottom = (float)v[3];
+    }
+    if (arr) env->DeleteLocalRef(arr);
+    env->DeleteLocalRef(cls);
+    return area;
 }
 
 } // namespace maiz

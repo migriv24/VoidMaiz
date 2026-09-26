@@ -139,7 +139,8 @@ about each. **Built** means it is in `voidmaiz/mobile.hpp` and compiles today.
 |---|---|---|
 | **bottom sheet with detents** | the inspector, the record detail, the filter rail — a phone's answer to a docked side panel; the detent is view state, flushed to the config tier on `settled` like the camera | **built** |
 | **snackbar with an action** | the log strip has no room on a phone; "Deleted. UNDO" costs one widget because `undo` is already a verb and every gesture is already a command | **built** |
-| **FAB + speed dial** | the add-palette, where a thumb can reach it | **built** |
+| **safe area** | the status bar, the camera cutout and a gesture phone's bottom strip belong to the system; nothing of the app's may sit there (Void Hormiga's first APK put its navigation bar under the gesture strip, 2026-09-25) | **built 2026-09-25**: `voidmaiz/safearea.hpp` (`SafeArea`, `android_safe_area` through `MaizActivity.maizSafeInsets()`: bars, cutout, and at the bottom at least the mandatory gesture strip) and `reserve_safe_area` in `mobile.hpp`, which a shell calls once a frame before any other side bar |
+| **FAB + speed dial** | the add-palette, where a thumb can reach it | **built** (2026-09-25: the dial's entries were right-aligned against the dial's own auto-sized width and settled at a sliver; one width for the column now, and the FAB's glyph drawn at an icon's size) |
 | **segmented control** | Hormiga's four workflows; a tab bar a finger can hit | **built** |
 | **stepper** | a drag-number needs sub-pixel aim and has no affordance under a finger; small and quantised fields get −/+ with hold-to-repeat | **built** (raw control; the registry-side field editor is staged) |
 | **swipe-actionable row** | the gesture a phone uses where a desktop uses a right-click — Hormiga's table view | **built** |
