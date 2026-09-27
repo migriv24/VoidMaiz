@@ -80,6 +80,75 @@ struct TouchScrollState {
 
 void touch_scroll(TouchScrollState& st, float dp = 1.0f, float slop_dp = 8.0f);
 
+/* ── the touch gate: a finger decides BEFORE ImGui hears of it ──────────────
+ * touch_scroll above reads a finger ImGui has already been told about, so the
+ * card under a scrolling finger lights up as pressed, and hovered things stay
+ * lit after it lifts. Void Hormiga's author, on the first APK that scrolled:
+ * "i still highlight things i hover over when scrolling ... i don't think
+ * there's a difference between the 'tap' and 'scroll'", and it did not feel
+ * like the smoothest scrolling they had used.
+ *
+ * The gate sits between the platform's touch events and ImGui, the way every
+ * phone toolkit does, and tells ImGui only what a finger turned out to be:
+ *   - lifted quickly, without moving: a TAP (press and release, at once);
+ *   - still for `press_delay` seconds: a PRESS (the press shows, and whatever is
+ *     under it may be dragged: a swipe row, a slider, a canvas node);
+ *   - moved past the slop along an axis the window under it can scroll: a
+ *     SCROLL, which ImGui never hears about, so nothing lights up and nothing
+ *     clicks. It follows the finger exactly (not frame deltas added up), and a
+ *     release glides, from a velocity measured over the last 100 ms of real
+ *     touch timestamps, slowing the way iOS does;
+ *   - moved on something that cannot scroll that way: a press where it began,
+ *     then the drag (a swipe row opens);
+ *   - two fingers: a PINCH, reported in `pinch` for a canvas to zoom and pan.
+ * After a lift the pointer is taken away, so nothing stays hovered.
+ *
+ * A shell feeds it every touch event (pointer ids, positions in framebuffer
+ * pixels, event times in seconds; Android's historical samples too) and calls
+ * touch_gate_frame once a frame after NewFrame. A mouse keeps going to ImGui
+ * directly. One gate per device: default_touch_gate(). */
+struct TouchGate {
+    // settings
+    float slop_dp = 8.0f;
+    double press_delay = 0.11; // a still finger becomes a press after this
+    // this frame's pinch (valid while `active`): scale and pan since last frame
+    struct Pinch {
+        bool active = false;
+        float cx = 0, cy = 0; // the midpoint, px
+        float scale = 1.0f;   // distance now / distance last frame
+        float dx = 0, dy = 0; // midpoint moved, px
+    } pinch;
+    bool scrolling = false; // a finger (or a glide) is scrolling
+    float px = -FLT_MAX, py = -FLT_MAX; // where ImGui was last told the pointer is
+
+    // ── internal ──
+    enum class Mode { Idle, Pending, Pressed, Scrolling, Pinching, Ignoring };
+    Mode mode = Mode::Idle;
+    int id0 = -1, id1 = -1;          // the fingers' pointer ids
+    float x0 = 0, y0 = 0, x = 0, y = 0, x1 = 0, y1 = 0; // first finger: down and now; second finger now
+    double t0 = 0.0, down_at = 0.0; // the event's time; the frame clock at the touch
+    float px_per_dp = 1.0f;          // set each frame: the slop in this device's pixels
+    bool stopped_glide = false;      // this finger stopped a glide: it is not a tap
+    bool claimed = false;            // a press that became a drag of what is under it
+    bool gliding = false;
+    unsigned window = 0;             // ImGuiID being scrolled
+    int axis = 1;
+    float anchor_scroll = 0, anchor_pos = 0;
+    float velocity = 0;              // px/s along the axis, for the glide
+    float samples_t[16] = {}, samples_p[16] = {};
+    int nsamples = 0;
+    double sample_base = 0.0;
+    float pinch_dist = 0, pinch_mx = 0, pinch_my = 0; // last frame's
+    int hide_in = -1;                // frames until the pointer is taken away
+};
+
+TouchGate& default_touch_gate();
+void touch_gate_down(TouchGate& g, int pointer, float x, float y, double t);
+void touch_gate_move(TouchGate& g, int pointer, float x, float y, double t);
+void touch_gate_up(TouchGate& g, int pointer, float x, float y, double t);
+void touch_gate_cancel(TouchGate& g);
+void touch_gate_frame(TouchGate& g, float dp);
+
 /* ── the canvas, read by a finger ────────────────────────────────────────────
  * Set the SCREEN-SPACE budgets from the device's physical scale, and nothing
  * else. The deliberate omission is the node geometry (node_w, header_h,

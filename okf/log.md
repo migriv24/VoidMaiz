@@ -7310,3 +7310,16 @@ permission for photos, on purpose.
 Measured in Void Hormiga's phone harness (scroll, glide, chips sideways, swipe
 to Delete, a tap still opening a card, a photo arriving through a played
 picker). The Java compiles, and both APKs build. Not run on a device.
+
+## 2026-09-27 — The touch gate: a tap is not a scroll
+
+On 0.1.9, Void Hormiga's author found that scrolling worked, but a scrolling
+finger still pressed and lit what it began on. `touch_scroll` could not help
+that: by the time it ran, ImGui had already been told a button was down. The
+**touch gate** (`TouchGate`, `touch_gate_*` in `mobile.hpp`) sits before ImGui
+instead. A shell feeds it raw touch events with their timestamps, and ImGui
+hears only a tap, a press, a press-then-drag, or nothing at all (a scroll). Two
+fingers give a pinch for a canvas. Details in [touch](/concepts/touch.md).
+Measured in Void Hormiga's phone harness, which drives its finger through the
+same gate: a scroll lights nothing, a tap opens, a swipe row opens, a hold
+presses, and a pinch zooms a graph both ways.

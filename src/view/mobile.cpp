@@ -718,6 +718,244 @@ void touch_scroll(TouchScrollState& st, float dp, float slop_dp) {
     }
 }
 
+// ── the touch gate ───────────────────────────────────────────────────────────
+
+namespace {
+
+ImGuiWindow* window_at(float x, float y) {
+    ImGuiWindow* hovered = nullptr;
+    ImGuiWindow* under = nullptr;
+    ImGui::FindHoveredWindowEx(ImVec2(x, y), false, &hovered, &under);
+    return hovered;
+}
+
+void to_imgui_pos(TouchGate& g, float x, float y) {
+    ImGuiIO& io = ImGui::GetIO();
+    io.AddMouseSourceEvent(ImGuiMouseSource_TouchScreen);
+    io.AddMousePosEvent(x, y);
+    g.px = x; // what ImGui was last told: a host re-asserts it over a real cursor
+    g.py = y;
+}
+
+void to_imgui_button(bool down) {
+    ImGuiIO& io = ImGui::GetIO();
+    io.AddMouseSourceEvent(ImGuiMouseSource_TouchScreen);
+    io.AddMouseButtonEvent(0, down);
+}
+
+void press_at(TouchGate& g, float x, float y) {
+    to_imgui_pos(g, x, y);
+    to_imgui_button(true);
+    g.mode = TouchGate::Mode::Pressed;
+}
+
+void sample(TouchGate& g, float pos, double t) {
+    if (g.nsamples == 0) g.sample_base = t;
+    if (g.nsamples == 16) { // keep the newest
+        for (int i = 1; i < 16; ++i) g.samples_t[i - 1] = g.samples_t[i], g.samples_p[i - 1] = g.samples_p[i];
+        --g.nsamples;
+    }
+    g.samples_t[g.nsamples] = (float)(t - g.sample_base);
+    g.samples_p[g.nsamples] = pos;
+    ++g.nsamples;
+}
+
+/* The finger's speed at release: over the samples of the last 100 ms, and
+ * zero if it had stopped before lifting (a pause means "stay here"). */
+float release_velocity(const TouchGate& g, double t_up) {
+    if (g.nsamples < 2) return 0.0f;
+    const float now = (float)(t_up - g.sample_base), last = g.samples_t[g.nsamples - 1];
+    if (now - last > 0.06f) return 0.0f;
+    int k = g.nsamples - 1;
+    while (k > 0 && last - g.samples_t[k - 1] <= 0.1f) --k;
+    const float dt = last - g.samples_t[k];
+    return dt > 0.005f ? (g.samples_p[g.nsamples - 1] - g.samples_p[k]) / dt : 0.0f;
+}
+
+/* A finger that has left the slop decides here what it is. */
+void decide(TouchGate& g, float slop) {
+    const float dx = g.x - g.x0, dy = g.y - g.y0;
+    if (std::fabs(dx) < slop && std::fabs(dy) < slop) return;
+    const int axis = std::fabs(dy) >= std::fabs(dx) ? 1 : 0;
+    if (ImGuiWindow* w = scroll_target(window_at(g.x0, g.y0), axis)) {
+        if (g.mode == TouchGate::Mode::Pressed) { // a held press that moved: it scrolls after all
+            to_imgui_pos(g, -FLT_MAX, -FLT_MAX);       // released nowhere, so nothing clicks
+            to_imgui_button(false);
+        }
+        g.mode = TouchGate::Mode::Scrolling;
+        g.window = w->ID;
+        g.axis = axis;
+        g.anchor_scroll = w->Scroll[axis];
+        g.anchor_pos = axis ? g.y : g.x; // from here, so the content does not jump by the slop
+        g.nsamples = 0;
+        return;
+    }
+    if (g.mode == TouchGate::Mode::Pending) { // nothing to scroll: a press where it began, then the drag
+        press_at(g, g.x0, g.y0);
+        to_imgui_pos(g, g.x, g.y);
+    }
+    g.claimed = true; // a drag of what is under it (a swipe row, a slider, a node): it stays one
+}
+
+} // namespace
+
+TouchGate& default_touch_gate() {
+    static TouchGate g;
+    return g;
+}
+
+void touch_gate_down(TouchGate& g, int pointer, float x, float y, double t) {
+    using M = TouchGate::Mode;
+    if (g.mode == M::Idle || g.id0 < 0) {
+        // stopping a list that is flying is not a tap; touching one that has
+        // all but stopped is (nobody can see it still moving)
+        g.stopped_glide = g.gliding && std::fabs(g.velocity) > 150.0f * g.px_per_dp;
+        g.gliding = false;
+        g.mode = M::Pending;
+        g.id0 = pointer;
+        g.id1 = -1;
+        g.x0 = g.x = x;
+        g.y0 = g.y = y;
+        g.t0 = t;
+        g.down_at = ImGui::GetTime(); // the press delay runs on the frame clock
+        g.claimed = false;
+        g.nsamples = 0;
+        g.hide_in = -1;
+        return;
+    }
+    if (g.id1 >= 0 || pointer == g.id0) return; // a third finger: ignored
+    // a second finger: whatever the first was doing, this is a pinch now
+    if (g.mode == M::Pressed) {
+        to_imgui_pos(g, -FLT_MAX, -FLT_MAX);
+        to_imgui_button(false);
+    }
+    g.mode = M::Pinching;
+    g.id1 = pointer;
+    g.x1 = x;
+    g.y1 = y;
+    g.pinch_dist = std::hypot(g.x1 - g.x, g.y1 - g.y);
+    g.pinch_mx = (g.x + g.x1) * 0.5f;
+    g.pinch_my = (g.y + g.y1) * 0.5f;
+}
+
+void touch_gate_move(TouchGate& g, int pointer, float x, float y, double t) {
+    using M = TouchGate::Mode;
+    if (pointer == g.id1) {
+        g.x1 = x;
+        g.y1 = y;
+        return;
+    }
+    if (pointer != g.id0) return;
+    g.x = x;
+    g.y = y;
+    switch (g.mode) {
+    case M::Pending: decide(g, g.slop_dp * g.px_per_dp); break;
+    case M::Pressed:
+        to_imgui_pos(g, x, y);
+        if (!g.claimed) decide(g, g.slop_dp * g.px_per_dp); // held, then moved: it may still scroll
+        break;
+    case M::Scrolling: sample(g, g.axis ? y : x, t); break;
+    default: break;
+    }
+}
+
+void touch_gate_up(TouchGate& g, int pointer, float x, float y, double t) {
+    using M = TouchGate::Mode;
+    if (pointer == g.id1) { // one of a pinch's fingers: the other is ignored until it lifts
+        g.id1 = -1;
+        if (g.mode == M::Pinching) g.mode = M::Ignoring;
+        return;
+    }
+    if (pointer != g.id0) return;
+    g.x = x;
+    g.y = y;
+    switch (g.mode) {
+    case M::Pending:
+        if (!g.stopped_glide) { // a tap: press and release where it began
+            to_imgui_pos(g, g.x0, g.y0);
+            to_imgui_button(true);
+            to_imgui_button(false);
+            g.hide_in = 3;
+        }
+        break;
+    case M::Pressed:
+        to_imgui_pos(g, x, y);
+        to_imgui_button(false);
+        g.hide_in = 3;
+        break;
+    case M::Scrolling:
+        sample(g, g.axis ? y : x, t);
+        g.velocity = release_velocity(g, t);
+        g.gliding = true; // the frame decides whether it is fast enough to go on
+        break;
+    default: break;
+    }
+    if (g.mode == M::Pinching) { // the first finger lifted mid-pinch: ignore the other
+        g.mode = M::Ignoring;
+        g.id0 = g.id1;
+        g.id1 = -1;
+        return;
+    }
+    g.mode = M::Idle;
+    g.id0 = -1;
+}
+
+void touch_gate_cancel(TouchGate& g) {
+    if (g.mode == TouchGate::Mode::Pressed) {
+        to_imgui_pos(g, -FLT_MAX, -FLT_MAX);
+        to_imgui_button(false);
+    }
+    g.mode = TouchGate::Mode::Idle;
+    g.id0 = g.id1 = -1;
+    g.gliding = false;
+}
+
+void touch_gate_frame(TouchGate& g, float dp) {
+    using M = TouchGate::Mode;
+    ImGuiIO& io = ImGui::GetIO();
+    const float dt = io.DeltaTime > 0.0f ? io.DeltaTime : 1.0f / 60.0f;
+    if (g.hide_in > 0 && --g.hide_in == 0) to_imgui_pos(g, -FLT_MAX, -FLT_MAX); // nothing stays hovered
+
+    g.px_per_dp = dp;
+    // a finger that stayed still long enough is a press (one that stopped a
+    // glide never is: touching a moving list only stops it)
+    if (g.mode == M::Pending && !g.stopped_glide && ImGui::GetTime() - g.down_at >= g.press_delay)
+        press_at(g, g.x0, g.y0);
+    g.pinch.active = false;
+    ImGuiWindow* w = g.window ? ImGui::FindWindowByID(g.window) : nullptr;
+
+    if (g.mode == M::Scrolling && w) { // the content stays under the finger
+        const float target = g.anchor_scroll - ((g.axis ? g.y : g.x) - g.anchor_pos);
+        if (g.axis) ImGui::SetScrollY(w, target);
+        else ImGui::SetScrollX(w, target);
+    }
+    if (g.gliding) {
+        if (!w || std::fabs(g.velocity) < 60.0f * dp) {
+            g.gliding = false;
+        } else {
+            const float pos = w->Scroll[g.axis] - g.velocity * dt;
+            if (g.axis) ImGui::SetScrollY(w, pos);
+            else ImGui::SetScrollX(w, pos);
+            g.velocity *= std::exp(-2.2f * dt); // iOS's normal deceleration, near enough
+            if (std::fabs(g.velocity) < 12.0f * dp || pos <= 0.0f || pos >= w->ScrollMax[g.axis]) g.gliding = false;
+        }
+    }
+    if (g.mode == M::Pinching) {
+        const float d = std::hypot(g.x1 - g.x, g.y1 - g.y);
+        const float mx = (g.x + g.x1) * 0.5f, my = (g.y + g.y1) * 0.5f;
+        g.pinch.active = true;
+        g.pinch.cx = mx;
+        g.pinch.cy = my;
+        g.pinch.scale = g.pinch_dist > 1.0f && d > 1.0f ? d / g.pinch_dist : 1.0f;
+        g.pinch.dx = mx - g.pinch_mx;
+        g.pinch.dy = my - g.pinch_my;
+        g.pinch_dist = d;
+        g.pinch_mx = mx;
+        g.pinch_my = my;
+    }
+    g.scrolling = g.mode == M::Scrolling || g.gliding;
+}
+
 #ifndef __ANDROID__
 SafeArea android_safe_area(ANativeActivity*) { return {}; }
 #endif
