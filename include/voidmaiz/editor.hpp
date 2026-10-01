@@ -63,6 +63,11 @@ struct EditorState {
 
     // staged world positions of the selection during a Move drag
     StagedMap staged;
+    /* A released move or resize keeps its staged values ONE more frame: the
+     * host dispatches the commands after this frame is drawn, so clearing them
+     * at release drew the node back where it was for one frame (the flicker
+     * Hormiga's author reported, 2026-09-28). Cleared at the next frame's start. */
+    bool settle = false;
 
     float marquee_x0 = 0, marquee_y0 = 0; // world, anchor
     float marquee_x1 = 0, marquee_y1 = 0; // world, current
@@ -94,6 +99,7 @@ struct EditorState {
     bool add_request = false;
     float add_request_x = 0, add_request_y = 0;
     char add_filter[64] = {};
+    std::string add_category; // the add box's open category ("" = the category list)
     // quick add-and-link: the dangling wire's fixed end (picked node links to
     // it via its principal — always legal, principals are untyped)
     bool add_link = false;

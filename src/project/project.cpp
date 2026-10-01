@@ -246,6 +246,7 @@ void apply_glyph_hints(SceneNode& node, const cJSON* descriptor, const cJSON* co
         if (port.name.empty()) port.name = "p" + std::to_string(port.index);
         port.type = gstr(pd, "type");
         port.adjacency = std::string_view(gstr(pd, "render")) == "adjacency";
+        port.many = std::string_view(gstr(pd, "max")) == "many";
         if (std::string_view(gstr(pd, "dir", "in")) == "out")
             node.outputs.push_back(std::move(port));
         else

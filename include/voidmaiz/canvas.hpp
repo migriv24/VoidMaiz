@@ -104,12 +104,26 @@ struct CanvasStyle {
  * descriptor's hints, copied here by the host — empty = ungrouped, listed
  * first. Grouping only appears once any entry carries a category. */
 struct AddPalette {
+    /* A port the glyph declares, for the add-and-link box: dropping a wire on
+     * empty canvas offers only glyphs with a port that fits, and wires the new
+     * node by THAT port (not its principal). Optional: a host that leaves it
+     * empty gets the old behaviour, every glyph, linked by the principal. */
+    struct EntryPort {
+        int index = 0;     // net port index (1..n, the reduce contract)
+        bool out = false;
+        std::string type;  // "" = fits anything
+        std::string name;
+    };
     struct Entry {
         std::string glyph;
         std::string label;
         std::string category;
+        std::vector<EntryPort> ports;
     };
     std::vector<Entry> entries;
+    /* Past this many entries, with categories, the box opens on the category
+     * list and one more click shows a category (typing still searches all). */
+    std::size_t nest_after = 14;
 };
 
 struct CanvasIO {

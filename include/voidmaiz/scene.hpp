@@ -72,6 +72,12 @@ struct ScenePort {
     bool adjacency = false; // hint "render":"adjacency" — wires on this port are
                             // shown by the bodies touching, not a drawn bezier
                             // (okf/concepts/node-blocks.md)
+    /* hint "max":"many" — an INPUT that takes several wires (a join, a list).
+     * Without it an aux input is single-occupancy and a new wire replaces the
+     * old one, which is right for most dataflow and wrong for a fan-in. The
+     * canvas spreads a many-input's wire ends along a pill so each stays
+     * visible (Hormiga's Antfarm v2 asked, 2026-09-28). */
+    bool many = false;
 };
 
 /* One editable field: a key the glyph DECLARES (the editability registry,
@@ -190,6 +196,11 @@ struct SceneWire {
      * — 900 rpm drawn nine hundred times thicker than "supports, 1.0" is a lie
      * the projection would otherwise be complicit in. Draw a value as a label. */
     bool is_value = false;
+    /* How many parallel strands to draw (1-5), host-set after projection like
+     * `active`. A STRENGTH drawn as volume, never a value: a host that sets it
+     * says "this wire carries more than that one" (Hormiga: a mantle's rune
+     * count on a log scale). The exact number belongs on a label or a face. */
+    int strands = 1;
     bool active = false;   // host-set after projection (e.g. a rule-bearing
                            // active pair); the canvas renders it emphasized
     /* Set by collapse_wires (voidmaiz/wires.hpp) when this drawn wire stands for

@@ -7323,3 +7323,37 @@ fingers give a pinch for a canvas. Details in [touch](/concepts/touch.md).
 Measured in Void Hormiga's phone harness, which drives its finger through the
 same gate: a scroll lights nothing, a tap opens, a swipe row opens, a hold
 presses, and a pinch zooms a graph both ways.
+
+## 2026-09-28 — The canvas, for a big dataflow graph: fan-in, strands, a two-level add box, no flicker
+
+Void Hormiga's Antfarm v2 is the first host with forty node kinds and typed
+dataflow, and its author reported four things from using it. All four are
+generic, so they are here, not there:
+
+- **A move no longer flickers.** A released move or resize cleared its staged
+  values in the same frame it drew, and the host applies the command after that
+  frame, so the node was drawn where it had been for one frame. The staged
+  values now survive one more frame (`EditorState::settle`) and are cleared at
+  the start of the next, when the scene holds the move. An old bug, reported
+  before this graph existed.
+- **Many-inputs.** A port hint `"max":"many"` (`ScenePort::many`) makes an aux
+  input take several wires. Without it an aux input stays single-occupancy, and
+  a new wire still replaces the old one. The canvas spreads a many-input's wire
+  ends along a pill as long as its fan-in and writes the count beside it, so
+  three wires read as three.
+- **Strands.** `SceneWire::strands` (1 to 5, host-set after projection like
+  `active`) draws a wire as parallel strands: a strength, never a value, in the
+  same spirit as the attribute-assertion rule.
+- **The add box has two levels when it is big.** Past `AddPalette::nest_after`
+  entries with categories, Shift+A opens on the category list and the
+  right-click menu uses submenus; typing still searches every category.
+  **Dropping a wire on empty canvas offers only glyphs with a port that fits**
+  (when the host declares `AddPalette::Entry::ports`) and wires the new node by
+  that port, not its principal. A host that declares no ports keeps the old
+  behaviour.
+
+Measured in Void Hormiga's desktop harness: the category submenus, a mantle
+output dropped on empty canvas listing only mantle-input kinds and minting a
+Count wired `rest:mantle` in one batch, and a three-wire fan-in drawn as a pill
+with "3". The flicker is a one-frame effect a screenshot cannot catch; the fix
+is argued from the frame order, and the author is the test.

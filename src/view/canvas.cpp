@@ -230,6 +230,24 @@ ImVec2 world_pos(const SceneNode& n, const EditorState* ed) {
     return ImVec2(n.x, n.y);
 }
 
+/* Is this aux input a many-input (hint "max":"many")? */
+bool port_is_many(const SceneNode& n, int port) {
+    for (const auto& p : n.inputs)
+        if (p.index == port) return p.many;
+    return false;
+}
+
+/* A wire's place among the wires into the same many-input: (rank, count). */
+std::pair<int, int> fan_in_rank(const Scene& scene, const SceneWire& w) {
+    int rank = 0, count = 0;
+    for (const auto& o : scene.wires) {
+        if (o.to != w.to || o.to_port != w.to_port || o.kind != SceneWire::Kind::Linguine) continue;
+        if (&o == &w) rank = count;
+        ++count;
+    }
+    return {rank, count};
+}
+
 /* This frame's fx override for a node, if any. */
 const NodeFx* node_fx(const CanvasFx* fx, const SceneNode& n) {
     if (!fx) return nullptr;
@@ -251,8 +269,8 @@ NodeGeom geom(const SceneNode& n, const Camera& cam, const ImVec2& origin,
     g.zoom = cam.zoom;
     float w = node_width(n, s);
     float h = node_height(n, s);
-    if (ed && !n.collapsed && ed->drag == EditorState::Drag::Resize &&
-        ed->resize_node == n.name) { // staged resize wins mid-gesture
+    if (ed && !n.collapsed && (ed->drag == EditorState::Drag::Resize || ed->settle) &&
+        !ed->resize_node.empty() && ed->resize_node == n.name) { // staged resize wins mid-gesture
         w = ed->resize_w;
         h = ed->resize_h;
     }
@@ -437,7 +455,23 @@ void draw_wire(ImDrawList* dl, const SceneWire& w, const ImVec2& a, const ImVec2
         break;
     }
     case SceneWire::Kind::Linguine: {
-        dl->AddBezierCubic(a, c1, c2, b, linguine_col, 2.0f * zoom);
+        /* STRANDS: several thin parallel curves for a wire the host says
+         * carries more (SceneWire::strands). Offset across the run, so the
+         * bundle reads as one wire made of several. */
+        const int strands = std::clamp(w.strands, 1, 5);
+        if (strands == 1) dl->AddBezierCubic(a, c1, c2, b, linguine_col, 2.0f * zoom);
+        else {
+            float dx = b.x - a.x, dy = b.y - a.y, len = std::sqrt(dx * dx + dy * dy);
+            ImVec2 perp = len > 0.001f ? ImVec2(-dy / len, dx / len) : ImVec2(0, 1);
+            const float gap = 3.2f * zoom;
+            for (int k = 0; k < strands; ++k) {
+                const float o = ((float)k - 0.5f * (float)(strands - 1)) * gap;
+                const ImVec2 d(perp.x * o, perp.y * o);
+                dl->AddBezierCubic(ImVec2(a.x + d.x * 0.35f, a.y + d.y * 0.35f), ImVec2(c1.x + d.x, c1.y + d.y),
+                                   ImVec2(c2.x + d.x, c2.y + d.y), ImVec2(b.x + d.x * 0.35f, b.y + d.y * 0.35f),
+                                   linguine_col, 1.3f * zoom);
+            }
+        }
         if (w.directed) { // arrowhead pointing into the destination, along -tb
             float r = 5.0f * zoom;
             ImVec2 perp(-tb.y, tb.x);
@@ -723,6 +757,11 @@ bool wire_endpoints(const Scene& scene, const SceneWire& w, const Camera& cam,
                         node_theta(scene, *tn, style, ed, fx));
         ta = port_tangent(*fn, fg, w.from_port, a);
         tb = port_tangent(*tn, tg, w.to_port, b);
+        if (w.kind == SceneWire::Kind::Linguine && port_is_many(*tn, w.to_port)) {
+            // a fan-in: each wire keeps its own place along the input's pill
+            const auto [rank, count] = fan_in_rank(scene, w);
+            if (count > 1) b.y += ((float)rank - 0.5f * (float)(count - 1)) * 7.0f * cam.zoom;
+        }
     }
     return true;
 }
@@ -790,6 +829,30 @@ void render_scene(ImDrawList* dl, const Scene& scene, const Camera& cam,
         if (const NodeFx* f = node_fx(fx, n); f && f->scale <= 0.02f) continue;
         draw_node(dl, n, geom(n, cam, origin, style, ed, fx), style,
                   ed && ed->selected(n.name), node_theta(scene, n, style, ed, fx));
+    }
+    /* MANY-INPUTS: a pill as long as its fan-in, and the count beside it, so
+     * three wires into one socket read as three and not as one thick one. */
+    for (const auto& n : scene.nodes) {
+        if (n.collapsed || n.shape != NodeShape::Window) continue;
+        for (const auto& p : n.inputs) {
+            if (!p.many) continue;
+            int count = 0;
+            for (const auto& w : scene.wires)
+                if (w.to == n.name && w.to_port == p.index && w.kind == SceneWire::Kind::Linguine) ++count;
+            NodeGeom g = geom(n, cam, origin, style, ed, fx);
+            const ImVec2 at = port_anchor(n, g, p.index, false, style, 0.0f);
+            const float r = style.port_radius * cam.zoom;
+            const float half = std::max(r * 1.4f, 0.5f * (float)std::max(count - 1, 0) * 7.0f * cam.zoom + r);
+            const PortStyle* ps = port_style(style, p.type);
+            const ImU32 col = ps && ps->color ? ps->color : type_color(p.type);
+            dl->AddRectFilled(ImVec2(at.x - r * 0.9f, at.y - half), ImVec2(at.x + r * 0.9f, at.y + half), col, r);
+            if (count > 1 && cam.zoom > 0.45f) {
+                const std::string label = std::to_string(count);
+                const float fs = ImGui::GetFontSize() * 0.75f * cam.zoom;
+                text_with_halo(dl, fs, ImVec2(at.x - r * 2.2f - fs * 0.6f * (float)label.size(), at.y - half - fs),
+                               style.theme.text_dim, label.c_str());
+            }
+        }
     }
 }
 
@@ -974,6 +1037,12 @@ CanvasIO edit_canvas(const char* str_id, const Scene& scene, EditorState& ed,
                      const CanvasFx* fx, const CanvasNet* net) {
     CanvasIO out;
     ed.hover_wire_valid = false; // re-derived by this frame's hover pass
+    if (ed.settle && ed.drag == EditorState::Drag::None) {
+        // last frame's release has been dispatched by now: the scene holds it
+        ed.staged.clear();
+        ed.resize_node.clear();
+        ed.settle = false;
+    }
     ImVec2 avail = ImGui::GetContentRegionAvail();
     if (avail.x < 32 || avail.y < 32) return out;
 
@@ -1293,7 +1362,8 @@ CanvasIO edit_canvas(const char* str_id, const Scene& scene, EditorState& ed,
             } else if (!io.KeyShift && !ed.press_node.empty()) {
                 ed.selection = {ed.press_node}; // plain click collapses the selection
             }
-            ed.staged.clear();
+            if (ed.moved) ed.settle = true; // drawn where it was dropped until the move lands
+            else ed.staged.clear();
             ed.drag = EditorState::Drag::None;
         }
     }
@@ -1308,7 +1378,7 @@ CanvasIO edit_canvas(const char* str_id, const Scene& scene, EditorState& ed,
                                    ed.resize_h + io.MouseDelta.y / cam.zoom);
         } else {
             out.commands.push_back(compile_resize(ed.resize_node, ed.resize_w, ed.resize_h));
-            ed.resize_node.clear();
+            ed.settle = true; // keep the staged size until the resize lands (see EditorState::settle)
             ed.drag = EditorState::Drag::None;
         }
     }
@@ -1382,9 +1452,10 @@ CanvasIO edit_canvas(const char* str_id, const Scene& scene, EditorState& ed,
                     if (end->port == 0)
                         for (const auto& w : wires_on_principal(scene, end->node))
                             add_unlink(w);
-                if (v == WireVerdict::Linguine && to.port != 0)
+                const SceneNode* to_node = scene.find(to.node);
+                if (v == WireVerdict::Linguine && to.port != 0 && !(to_node && port_is_many(*to_node, to.port)))
                     if (const SceneWire* occ = wire_into(scene, to.node, to.port))
-                        add_unlink(*occ); // an input holds one wire: rewire
+                        add_unlink(*occ); // an input holds one wire: rewire (a many-input keeps them all)
                 out.commands.push_back(write_rewire(style, unlinks, from, to));
                 linked = true;
             }
@@ -1446,7 +1517,10 @@ CanvasIO edit_canvas(const char* str_id, const Scene& scene, EditorState& ed,
         ImGui::OpenPopup("vn-add");
     }
     if (palette && ImGui::BeginPopup("vn-add")) {
-        if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
+        if (ImGui::IsWindowAppearing()) {
+            ImGui::SetKeyboardFocusHere();
+            ed.add_category.clear();
+        }
         bool entered = ImGui::InputTextWithHint("##filter", "add node…", ed.add_filter,
                                                 sizeof ed.add_filter,
                                                 ImGuiInputTextFlags_EnterReturnsTrue);
@@ -1455,30 +1529,80 @@ CanvasIO edit_canvas(const char* str_id, const Scene& scene, EditorState& ed,
             return s;
         };
         std::string filter = lc(ed.add_filter);
+        /* THE PORT THAT WAS DROPPED (add-and-link). When the host declared its
+         * glyphs' ports, only glyphs with a port that FITS are offered, and the
+         * new node is wired by that port: an output wants an input of its
+         * type, an input wants an output. Untyped ports fit anything. */
+        bool any_ports = false;
+        for (const auto& entry : palette->entries) any_ports |= !entry.ports.empty();
+        auto fitting_port = [&](const AddPalette::Entry& entry) -> const AddPalette::EntryPort* {
+            for (const auto& p : entry.ports)
+                if (p.out != ed.add_link_is_output &&
+                    (p.type.empty() || ed.add_link_type.empty() || p.type == ed.add_link_type))
+                    return &p;
+            return nullptr;
+        };
+        const bool by_port = ed.add_link && any_ports && ed.add_link_port != 0;
+        if (by_port)
+            ImGui::TextDisabled("fits %s%s", ed.add_link_is_output ? "an input taking " : "an output giving ",
+                                ed.add_link_type.empty() ? "anything" : ed.add_link_type.c_str());
         // filtered entries, grouped by category when any entry declares one
-        // (uncategorized first, then categories in first-appearance order)
         std::vector<const AddPalette::Entry*> visible;
         bool any_cat = false;
         for (const auto& entry : palette->entries) {
             if (!filter.empty() && lc(entry.glyph).find(filter) == std::string::npos &&
-                lc(entry.label).find(filter) == std::string::npos)
+                lc(entry.label).find(filter) == std::string::npos && lc(entry.category).find(filter) == std::string::npos)
                 continue;
+            if (by_port && !fitting_port(entry)) continue;
             visible.push_back(&entry);
             if (!entry.category.empty()) any_cat = true;
         }
         const AddPalette::Entry* first = visible.empty() ? nullptr : visible.front();
         const AddPalette::Entry* picked = nullptr;
         auto entry_row = [&picked](const AddPalette::Entry& entry) {
-            std::string row = entry.label + "  (" + entry.glyph + ")";
-            if (ImGui::Selectable(row.c_str())) picked = &entry;
+            if (ImGui::Selectable(entry.label.c_str())) picked = &entry;
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", entry.glyph.c_str());
         };
-        if (!any_cat) {
+        std::vector<std::string> cats{""};
+        for (const auto* e : visible)
+            if (std::find(cats.begin(), cats.end(), e->category) == cats.end()) cats.push_back(e->category);
+        /* TWO LEVELS when the box is big (the author, 2026-09-28: "the giant
+         * list needs to be replaced with sections and one more navigation
+         * thing"): the categories first, one click into one, one back out.
+         * Typing searches every category at once; a dropped wire's short list
+         * stays flat. */
+        const bool nested = any_cat && filter.empty() && !by_port && visible.size() > palette->nest_after;
+        if (visible.empty()) ImGui::TextDisabled(by_port ? "nothing here fits that port" : "no match");
+        else if (nested && ed.add_category.empty()) {
+            for (const auto& cat : cats) {
+                int count = 0;
+                for (const auto* e : visible) count += e->category == cat;
+                if (count == 0) continue;
+                if (cat.empty()) { // uncategorized entries stay at the top level
+                    for (const auto* e : visible)
+                        if (e->category.empty()) entry_row(*e);
+                    continue;
+                }
+                std::string row = cat + "  (" + std::to_string(count) + ")";
+                if (ImGui::Selectable(row.c_str(), false, ImGuiSelectableFlags_DontClosePopups))
+                    ed.add_category = cat;
+                ImGui::SameLine(ImGui::GetContentRegionAvail().x - 6.0f);
+                ImGui::TextDisabled(">");
+            }
+            first = nullptr; // Enter on the category list adds nothing
+        } else if (nested) {
+            if (ImGui::Selectable("<  all categories", false, ImGuiSelectableFlags_DontClosePopups))
+                ed.add_category.clear();
+            ImGui::SeparatorText(ed.add_category.c_str());
+            first = nullptr;
+            for (const auto* e : visible)
+                if (e->category == ed.add_category) {
+                    if (!first) first = e;
+                    entry_row(*e);
+                }
+        } else if (!any_cat) {
             for (const auto* e : visible) entry_row(*e);
         } else {
-            std::vector<std::string> cats{""};
-            for (const auto* e : visible)
-                if (std::find(cats.begin(), cats.end(), e->category) == cats.end())
-                    cats.push_back(e->category);
             for (const auto& cat : cats) {
                 bool headed = false;
                 for (const auto* e : visible) {
@@ -1502,8 +1626,13 @@ CanvasIO edit_canvas(const char* str_id, const Scene& scene, EditorState& ed,
                             ed.add_link_type};
                 PortRef dst{name, 0, false, ""};
                 PortRef from = src, to = dst;
-                if (check_wire(src, dst) == WireVerdict::Linguine && !from.is_output &&
-                    from.port != 0)
+                if (const AddPalette::EntryPort* fp = by_port ? fitting_port(*picked) : nullptr) {
+                    // wired by the port that fits, in the direction data flows
+                    dst = PortRef{name, fp->index, fp->out, fp->type};
+                    from = src.is_output ? src : dst;
+                    to = src.is_output ? dst : src;
+                } else if (check_wire(src, dst) == WireVerdict::Linguine && !from.is_output &&
+                           from.port != 0)
                     std::swap(from, to); // an aux input is fed BY the new principal
                 std::vector<std::string> cmds = {"rune new " + picked->glyph + " " + name,
                                                  compile_move(name, ed.add_x, ed.add_y)};
@@ -1803,8 +1932,10 @@ CanvasIO edit_canvas(const char* str_id, const Scene& scene, EditorState& ed,
         } else if (palette && !palette->entries.empty()) {
             if (context_menu) ImGui::Separator();
             if (ImGui::BeginMenu("add")) {
-                // same category grouping as the add box (headers, not submenus —
-                // a two-level hunt is slower than a scan for palette-sized lists)
+                /* Headers for a palette-sized list; SUBMENUS once it outgrows
+                 * that (AddPalette::nest_after). A scan beats a two-level hunt
+                 * for ten entries, and loses to it for forty: the author found
+                 * the flat list of Antfarm v2's kinds "HUGE" (2026-09-28). */
                 bool any_cat = false;
                 for (const auto& entry : palette->entries)
                     if (!entry.category.empty()) any_cat = true;
@@ -1817,11 +1948,20 @@ CanvasIO edit_canvas(const char* str_id, const Scene& scene, EditorState& ed,
                 if (!any_cat) {
                     for (const auto& entry : palette->entries) add_item(entry);
                 } else {
+                    const bool nested = palette->entries.size() > palette->nest_after;
                     std::vector<std::string> cats{""};
                     for (const auto& entry : palette->entries)
                         if (std::find(cats.begin(), cats.end(), entry.category) == cats.end())
                             cats.push_back(entry.category);
                     for (const auto& cat : cats) {
+                        if (nested && !cat.empty()) {
+                            if (ImGui::BeginMenu(cat.c_str())) {
+                                for (const auto& entry : palette->entries)
+                                    if (entry.category == cat) add_item(entry);
+                                ImGui::EndMenu();
+                            }
+                            continue;
+                        }
                         bool headed = false;
                         for (const auto& entry : palette->entries) {
                             if (entry.category != cat) continue;
