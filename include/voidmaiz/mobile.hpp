@@ -106,11 +106,39 @@ void touch_scroll(TouchScrollState& st, float dp = 1.0f, float slop_dp = 8.0f);
  * A shell feeds it every touch event (pointer ids, positions in framebuffer
  * pixels, event times in seconds; Android's historical samples too) and calls
  * touch_gate_frame once a frame after NewFrame. A mouse keeps going to ImGui
- * directly. One gate per device: default_touch_gate(). */
+ * directly. One gate per device: default_touch_gate().
+ *
+ * ── THE MAP'S GESTURES (2026-10-04) ─────────────────────────────────────────
+ * Void Hormiga's map is the first canvas on a phone whose whole job is
+ * spatial, and the gestures every phone map shares are not a tap, a press or a
+ * pinch. They are reported in `gestures`, ONE frame each, alongside what ImGui
+ * was told (a canvas reads them; every other screen ignores them and behaves
+ * exactly as before):
+ *   - LONG PRESS: a finger held still for `long_press_s`. ImGui already holds
+ *     a press there (a still finger became one after `press_delay`), so a
+ *     canvas that acts on the long press must ignore that press's release.
+ *     If the finger then moves, ImGui sees the drag: "hold to pick up, then
+ *     drag" is how a marker moves without every pan risking moving one.
+ *   - DOUBLE TAP: `taps` counts a tap that follows another within
+ *     `double_tap_s` and `double_tap_slop_dp`. Both taps still reach ImGui.
+ *   - TWO-FINGER TAP: two fingers that land and lift without moving (a map
+ *     zooms out). Nothing reaches ImGui.
+ *   - QUICK ZOOM: tap, then put the finger back down and drag up or down
+ *     (Google Maps' one-handed zoom; measured 18% faster than a pinch one-
+ *     handed, Farhad & MacKenzie, HCII 2018). Only where the window under the
+ *     finger cannot scroll vertically, so a list never zooms. ImGui hears
+ *     nothing; `zoom_scale` is this frame's factor about `x`,`y` (the press).
+ *   - FLING: a press-then-drag (a canvas pan) released fast. `vx`,`vy` in
+ *     px/s, for a canvas to coast on. Lists glide on their own, as before. */
 struct TouchGate {
     // settings
     float slop_dp = 8.0f;
     double press_delay = 0.11; // a still finger becomes a press after this
+    double long_press_s = 0.45;
+    double double_tap_s = 0.3;
+    float double_tap_slop_dp = 28.0f;
+    float quick_zoom_dp = 160.0f; // a drag this long doubles (down) or halves (up) the zoom
+    float fling_min_dp_s = 260.0f;
     // this frame's pinch (valid while `active`): scale and pan since last frame
     struct Pinch {
         bool active = false;
@@ -118,11 +146,33 @@ struct TouchGate {
         float scale = 1.0f;   // distance now / distance last frame
         float dx = 0, dy = 0; // midpoint moved, px
     } pinch;
+    // this frame's discrete gestures (see above); cleared every frame
+    struct Gestures {
+        bool long_press = false;
+        int taps = 0;              // 1 a tap, 2 a double tap (0 = none this frame)
+        bool two_finger_tap = false;
+        bool quick_zoom = false;   // a quick zoom is in flight this frame
+        float zoom_scale = 1.0f;
+        bool fling = false;
+        float vx = 0, vy = 0;      // fling velocity, px/s
+        float x = 0, y = 0;        // where: the press, the tap, the two fingers' midpoint
+    } gestures;
     bool scrolling = false; // a finger (or a glide) is scrolling
     float px = -FLT_MAX, py = -FLT_MAX; // where ImGui was last told the pointer is
 
     // ── internal ──
-    enum class Mode { Idle, Pending, Pressed, Scrolling, Pinching, Ignoring };
+    enum class Mode { Idle, Pending, Pressed, Scrolling, Pinching, Ignoring, QuickZoom };
+    Gestures next;                   // gathered from events, published by the frame
+    double last_tap_t = -1e9;        // event time of the last tap, for a double tap
+    float last_tap_x = 0, last_tap_y = 0;
+    bool second = false;             // this finger followed a tap: maybe a double tap or a quick zoom
+    bool long_fired = false;         // this finger's long press was reported
+    float qz_last = 0;               // the quick zoom's previous y
+    double pinch_t = 0;              // when the second finger landed
+    float pinch_moved = 0;           // the most either finger moved since then, px
+    float pinch_ax = 0, pinch_ay = 0, pinch_bx = 0, pinch_by = 0; // where they landed
+    float drag_t[16] = {}, drag_x[16] = {}, drag_y[16] = {}; // a claimed drag's samples, for a fling
+    int ndrag = 0;
     Mode mode = Mode::Idle;
     int id0 = -1, id1 = -1;          // the fingers' pointer ids
     float x0 = 0, y0 = 0, x = 0, y = 0, x1 = 0, y1 = 0; // first finger: down and now; second finger now

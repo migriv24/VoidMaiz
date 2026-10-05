@@ -7357,3 +7357,33 @@ output dropped on empty canvas listing only mantle-input kinds and minting a
 Count wired `rest:mantle` in one batch, and a three-wire fan-in drawn as a pill
 with "3". The flicker is a one-frame effect a screenshot cannot catch; the fix
 is argued from the frame order, and the author is the test.
+
+## 2026-10-04 — The map's gestures, and where the device is
+
+Void Hormiga brought its map to the phone, and its author asked for the gestures
+that takes. All of it is generic, so it is here:
+
+- **The touch gate reports a map's gestures** (`TouchGate::gestures`, one frame
+  each, beside what ImGui was told): long press, double tap, two-finger tap,
+  quick zoom (tap, then drag, one-handed) and the fling of a canvas drag. A
+  screen that does not read them behaves exactly as before; the one change is
+  that a finger back down within 0.3 s of a tap, on something that cannot scroll
+  vertically, waits the long-press time before becoming a press (it may be a
+  quick zoom). `tests/touch_gate_smoke.cpp` drives it on a real ImGui, with a
+  canvas and a list side by side: the negatives (a quick zoom never presses the
+  canvas, a two-finger tap never clicks, a list never zooms, a drag that stopped
+  never flings) are the checks that matter.
+- **The location holiday** (`voidmaiz/location.hpp`, `src/input/location.cpp`,
+  `MaizActivity.maizLocation*`). One platform per process, installed by the
+  shell; `request()` is the only call that can show the system's prompt, so a
+  host can only ask from a person's tap. Approximate is a real answer. Off
+  Android `location()` is null; `FixedLocation` stands in for tests and harnesses.
+  The Java compiles to dex with `build_java.ps1`; no device has run it.
+- **`android_http(activity, user_agent)`**: an optional User-Agent, because
+  OpenStreetMap's tile policy asks every client to say who it is and Android's
+  default is a generic `Dalvik/…`.
+
+Measured: `touch_gate_smoke` passes; the rest of the suite is as it was (the
+known `reduce_conformance` red fails identically on the untouched tree). Void
+Hormiga's phone harness drove all five gestures and a granted and a refused
+location through its map.

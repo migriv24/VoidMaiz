@@ -168,8 +168,13 @@ Http curl_http();
 
 /* Android: java.net.HttpURLConnection through JNI. Call from a thread the
  * JavaVM can attach (a worker thread is right: never block the render loop on
- * the network). Empty elsewhere. */
-Http android_http(ANativeActivity* activity);
+ * the network). Empty elsewhere.
+ *
+ * `user_agent`, when given, is sent as the User-Agent (2026-10-04). Some
+ * servers refuse the platform's generic "Dalvik/…" one: OpenStreetMap's tile
+ * policy asks every application to identify itself, which is how Void
+ * Hormiga's map met this. */
+Http android_http(ANativeActivity* activity, const std::string& user_agent = {});
 
 bool safe_url(const std::string& url); // https://, no quotes or whitespace
 

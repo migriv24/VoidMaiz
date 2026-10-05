@@ -760,6 +760,20 @@ void sample(TouchGate& g, float pos, double t) {
     ++g.nsamples;
 }
 
+/* The same, in two dimensions, for a canvas drag's fling. */
+void drag_sample(TouchGate& g, float x, float y, double t) {
+    if (g.ndrag == 0) g.sample_base = t;
+    if (g.ndrag == 16) {
+        for (int i = 1; i < 16; ++i)
+            g.drag_t[i - 1] = g.drag_t[i], g.drag_x[i - 1] = g.drag_x[i], g.drag_y[i - 1] = g.drag_y[i];
+        --g.ndrag;
+    }
+    g.drag_t[g.ndrag] = (float)(t - g.sample_base);
+    g.drag_x[g.ndrag] = x;
+    g.drag_y[g.ndrag] = y;
+    ++g.ndrag;
+}
+
 /* The finger's speed at release: over the samples of the last 100 ms, and
  * zero if it had stopped before lifting (a pause means "stay here"). */
 float release_velocity(const TouchGate& g, double t_up) {
@@ -772,10 +786,43 @@ float release_velocity(const TouchGate& g, double t_up) {
     return dt > 0.005f ? (g.samples_p[g.nsamples - 1] - g.samples_p[k]) / dt : 0.0f;
 }
 
+bool drag_velocity(const TouchGate& g, double t_up, float& vx, float& vy) {
+    vx = vy = 0.0f;
+    if (g.ndrag < 2) return false;
+    const float now = (float)(t_up - g.sample_base), last = g.drag_t[g.ndrag - 1];
+    if (now - last > 0.06f) return false;
+    int k = g.ndrag - 1;
+    while (k > 0 && last - g.drag_t[k - 1] <= 0.1f) --k;
+    const float dt = last - g.drag_t[k];
+    if (dt <= 0.005f) return false;
+    vx = (g.drag_x[g.ndrag - 1] - g.drag_x[k]) / dt;
+    vy = (g.drag_y[g.ndrag - 1] - g.drag_y[k]) / dt;
+    return true;
+}
+
+/* A tap, counted: the second of two close in time and place is a double tap. */
+void count_tap(TouchGate& g, double t) {
+    const float near = g.double_tap_slop_dp * g.px_per_dp;
+    const bool twice = t - g.last_tap_t <= g.double_tap_s && std::fabs(g.x0 - g.last_tap_x) <= near &&
+                       std::fabs(g.y0 - g.last_tap_y) <= near;
+    g.next.taps = twice ? 2 : 1;
+    g.next.x = g.x0;
+    g.next.y = g.y0;
+    g.last_tap_t = twice ? -1e9 : t; // a third tap starts over
+    g.last_tap_x = g.x0;
+    g.last_tap_y = g.y0;
+}
+
 /* A finger that has left the slop decides here what it is. */
 void decide(TouchGate& g, float slop) {
     const float dx = g.x - g.x0, dy = g.y - g.y0;
     if (std::fabs(dx) < slop && std::fabs(dy) < slop) return;
+    // a finger put back down after a tap, dragged where nothing scrolls: a quick zoom
+    if (g.second && g.mode == TouchGate::Mode::Pending) {
+        g.mode = TouchGate::Mode::QuickZoom;
+        g.qz_last = g.y0;
+        return;
+    }
     const int axis = std::fabs(dy) >= std::fabs(dx) ? 1 : 0;
     if (ImGuiWindow* w = scroll_target(window_at(g.x0, g.y0), axis)) {
         if (g.mode == TouchGate::Mode::Pressed) { // a held press that moved: it scrolls after all
@@ -795,6 +842,7 @@ void decide(TouchGate& g, float slop) {
         to_imgui_pos(g, g.x, g.y);
     }
     g.claimed = true; // a drag of what is under it (a swipe row, a slider, a node): it stays one
+    g.ndrag = 0;
 }
 
 } // namespace
@@ -819,11 +867,20 @@ void touch_gate_down(TouchGate& g, int pointer, float x, float y, double t) {
         g.t0 = t;
         g.down_at = ImGui::GetTime(); // the press delay runs on the frame clock
         g.claimed = false;
+        g.long_fired = false;
         g.nsamples = 0;
+        g.ndrag = 0;
         g.hide_in = -1;
+        // back down where a tap just lifted, on something that cannot scroll
+        // vertically: it may be a double tap or a quick zoom, so it is not a
+        // press until it has had the time a long press takes
+        const float near = g.double_tap_slop_dp * g.px_per_dp;
+        g.second = t - g.last_tap_t <= g.double_tap_s && std::fabs(x - g.last_tap_x) <= near &&
+                   std::fabs(y - g.last_tap_y) <= near && !scroll_target(window_at(x, y), 1);
         return;
     }
     if (g.id1 >= 0 || pointer == g.id0) return; // a third finger: ignored
+    if (g.mode == M::QuickZoom) return;         // one finger is zooming; a second changes nothing
     // a second finger: whatever the first was doing, this is a pinch now
     if (g.mode == M::Pressed) {
         to_imgui_pos(g, -FLT_MAX, -FLT_MAX);
@@ -836,6 +893,12 @@ void touch_gate_down(TouchGate& g, int pointer, float x, float y, double t) {
     g.pinch_dist = std::hypot(g.x1 - g.x, g.y1 - g.y);
     g.pinch_mx = (g.x + g.x1) * 0.5f;
     g.pinch_my = (g.y + g.y1) * 0.5f;
+    g.pinch_t = t;
+    g.pinch_moved = 0.0f;
+    g.pinch_ax = g.x;
+    g.pinch_ay = g.y;
+    g.pinch_bx = x;
+    g.pinch_by = y;
 }
 
 void touch_gate_move(TouchGate& g, int pointer, float x, float y, double t) {
@@ -843,6 +906,8 @@ void touch_gate_move(TouchGate& g, int pointer, float x, float y, double t) {
     if (pointer == g.id1) {
         g.x1 = x;
         g.y1 = y;
+        if (g.mode == M::Pinching)
+            g.pinch_moved = std::max(g.pinch_moved, std::hypot(x - g.pinch_bx, y - g.pinch_by));
         return;
     }
     if (pointer != g.id0) return;
@@ -853,15 +918,35 @@ void touch_gate_move(TouchGate& g, int pointer, float x, float y, double t) {
     case M::Pressed:
         to_imgui_pos(g, x, y);
         if (!g.claimed) decide(g, g.slop_dp * g.px_per_dp); // held, then moved: it may still scroll
+        else drag_sample(g, x, y, t);
         break;
     case M::Scrolling: sample(g, g.axis ? y : x, t); break;
+    case M::Pinching: g.pinch_moved = std::max(g.pinch_moved, std::hypot(x - g.pinch_ax, y - g.pinch_ay)); break;
     default: break;
+    }
+    if (g.mode == M::QuickZoom) { // down zooms in, up zooms out (Google Maps' direction)
+        const float span = g.quick_zoom_dp * g.px_per_dp;
+        g.next.quick_zoom = true;
+        g.next.zoom_scale *= std::exp2((y - g.qz_last) / (span > 1.0f ? span : 1.0f));
+        g.next.x = g.x0;
+        g.next.y = g.y0;
+        g.qz_last = y;
     }
 }
 
 void touch_gate_up(TouchGate& g, int pointer, float x, float y, double t) {
     using M = TouchGate::Mode;
+    // a pinch that never moved, and lifted quickly: a two-finger tap
+    auto two_finger_tap = [&] {
+        if (g.mode == M::Pinching && g.pinch_moved < g.slop_dp * g.px_per_dp && t - g.pinch_t < 0.35 &&
+            t - g.t0 < 0.6) {
+            g.next.two_finger_tap = true;
+            g.next.x = (g.x + g.x1) * 0.5f;
+            g.next.y = (g.y + g.y1) * 0.5f;
+        }
+    };
     if (pointer == g.id1) { // one of a pinch's fingers: the other is ignored until it lifts
+        two_finger_tap();
         g.id1 = -1;
         if (g.mode == M::Pinching) g.mode = M::Ignoring;
         return;
@@ -876,12 +961,27 @@ void touch_gate_up(TouchGate& g, int pointer, float x, float y, double t) {
             to_imgui_button(true);
             to_imgui_button(false);
             g.hide_in = 3;
+            count_tap(g, t);
         }
         break;
     case M::Pressed:
         to_imgui_pos(g, x, y);
         to_imgui_button(false);
         g.hide_in = 3;
+        if (g.claimed) {
+            float vx, vy;
+            drag_sample(g, x, y, t);
+            if (drag_velocity(g, t, vx, vy) &&
+                std::hypot(vx, vy) >= g.fling_min_dp_s * g.px_per_dp) {
+                g.next.fling = true;
+                g.next.vx = vx;
+                g.next.vy = vy;
+                g.next.x = x;
+                g.next.y = y;
+            }
+        } else if (!g.long_fired) {
+            count_tap(g, t); // a slow tap is still a tap
+        }
         break;
     case M::Scrolling:
         sample(g, g.axis ? y : x, t);
@@ -891,6 +991,7 @@ void touch_gate_up(TouchGate& g, int pointer, float x, float y, double t) {
     default: break;
     }
     if (g.mode == M::Pinching) { // the first finger lifted mid-pinch: ignore the other
+        two_finger_tap();
         g.mode = M::Ignoring;
         g.id0 = g.id1;
         g.id1 = -1;
@@ -898,6 +999,7 @@ void touch_gate_up(TouchGate& g, int pointer, float x, float y, double t) {
     }
     g.mode = M::Idle;
     g.id0 = -1;
+    g.second = false;
 }
 
 void touch_gate_cancel(TouchGate& g) {
@@ -908,6 +1010,9 @@ void touch_gate_cancel(TouchGate& g) {
     g.mode = TouchGate::Mode::Idle;
     g.id0 = g.id1 = -1;
     g.gliding = false;
+    g.second = false;
+    g.long_fired = false;
+    g.next = TouchGate::Gestures{};
 }
 
 void touch_gate_frame(TouchGate& g, float dp) {
@@ -916,11 +1021,24 @@ void touch_gate_frame(TouchGate& g, float dp) {
     const float dt = io.DeltaTime > 0.0f ? io.DeltaTime : 1.0f / 60.0f;
     if (g.hide_in > 0 && --g.hide_in == 0) to_imgui_pos(g, -FLT_MAX, -FLT_MAX); // nothing stays hovered
 
+    // what the events since the last frame added up to, for one frame
+    g.gestures = g.next;
+    g.next = TouchGate::Gestures{};
+
     g.px_per_dp = dp;
+    const double held = ImGui::GetTime() - g.down_at;
     // a finger that stayed still long enough is a press (one that stopped a
-    // glide never is: touching a moving list only stops it)
-    if (g.mode == M::Pending && !g.stopped_glide && ImGui::GetTime() - g.down_at >= g.press_delay)
+    // glide never is: touching a moving list only stops it). One that came
+    // back down after a tap waits longer: it may yet be a double tap or a zoom.
+    if (g.mode == M::Pending && !g.stopped_glide && held >= (g.second ? g.long_press_s : g.press_delay))
         press_at(g, g.x0, g.y0);
+    // still, and held for as long as a long press takes
+    if (g.mode == M::Pressed && !g.claimed && !g.long_fired && !g.stopped_glide && held >= g.long_press_s) {
+        g.long_fired = true;
+        g.gestures.long_press = true;
+        g.gestures.x = g.x0;
+        g.gestures.y = g.y0;
+    }
     g.pinch.active = false;
     ImGuiWindow* w = g.window ? ImGui::FindWindowByID(g.window) : nullptr;
 

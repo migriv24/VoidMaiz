@@ -3,7 +3,8 @@
  * keyboard's side of the text-input holiday (okf/concepts/text-input.md), the
  * safe area, and (2026-09-25) the system's document picker and save dialog
  * (voidmaiz/documents.hpp), which is how a photo or a file gets on and off a
- * phone.
+ * phone, and (2026-10-04) where the phone is (voidmaiz/location.hpp): the
+ * location permission, asked only when native code asks, and LocationManager.
  *
  * A NativeActivity cannot receive a keyboard properly. With no View that is a
  * text editor, Android's input methods fall back to sending bare key events,
@@ -35,7 +36,15 @@
  */
 package org.voidmaiz;
 
+import android.Manifest;
 import android.app.NativeActivity;
+import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
+import android.location.Location;
+import android.location.LocationListener;
+import android.location.LocationManager;
+import android.os.Looper;
+import android.os.SystemClock;
 import android.content.Context;
 import android.content.Intent;
 import android.database.Cursor;
@@ -302,6 +311,144 @@ public class MaizActivity extends NativeActivity {
         if (in == null || out == null) throw new java.io.IOException("the file could not be opened");
         byte[] buf = new byte[64 * 1024];
         for (int r; (r = in.read(buf)) > 0;) out.write(buf, 0, r);
+    }
+
+    // ── where this device is (voidmaiz/location.hpp) ─────────────────────────
+    /* The permission is asked ONLY from maizLocationRequest, which native code
+     * calls from a person's tap; nothing here asks at start-up. Updates run on
+     * the UI thread's looper and stop while the activity is paused (a GPS left
+     * running in the background is a battery a person did not agree to spend).
+     * The newest fix waits in a field for native code to read. Access codes are
+     * LocationAccess's ordinals: unasked 0, asking 1, precise 2, approximate 3,
+     * denied 4, unavailable 5. */
+    static final int LOC_REQUEST = 0x4c00;
+    private volatile boolean locAsking = false;
+    private volatile boolean locOn = false;       // following (native asked, not stopped)
+    private volatile double[] locFix = null;      // lat, lon, accuracy, elapsed-realtime s, provider
+    private LocationListener locListener;
+
+    private boolean granted(String p) {
+        return checkSelfPermission(p) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private SharedPreferences locPrefs() {
+        return getSharedPreferences("org.voidmaiz.location", Context.MODE_PRIVATE);
+    }
+
+    public int maizLocationAccess() {
+        LocationManager lm = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+        if (lm == null) return 5;
+        final boolean fine = granted(Manifest.permission.ACCESS_FINE_LOCATION);
+        final boolean coarse = granted(Manifest.permission.ACCESS_COARSE_LOCATION);
+        if (fine || coarse) {
+            if (Build.VERSION.SDK_INT >= 28 && !lm.isLocationEnabled()) return 5; // switched off
+            return fine ? 2 : 3;
+        }
+        if (locAsking) return 1;
+        // refused before, and the system will not ask again: denied for good
+        if (locPrefs().getBoolean("refused", false) &&
+            !shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_FINE_LOCATION))
+            return 4;
+        return 0;
+    }
+
+    public boolean maizLocationRequest(final boolean precise) {
+        runOnUiThread(() -> {
+            locOn = true;
+            if (granted(Manifest.permission.ACCESS_FINE_LOCATION) ||
+                granted(Manifest.permission.ACCESS_COARSE_LOCATION)) {
+                startLocation();
+                return;
+            }
+            locAsking = true;
+            requestPermissions(precise
+                ? new String[] {Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION}
+                : new String[] {Manifest.permission.ACCESS_COARSE_LOCATION}, LOC_REQUEST);
+        });
+        return true;
+    }
+
+    public void maizLocationStop() {
+        locOn = false;
+        runOnUiThread(this::stopLocation);
+    }
+
+    public double[] maizLocationLatest() {
+        final double[] f = locFix;
+        if (f == null) return null;
+        return new double[] {f[0], f[1], f[2], SystemClock.elapsedRealtimeNanos() / 1e9 - f[3], f[4]};
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int code, String[] perms, int[] results) {
+        if (code != LOC_REQUEST) {
+            super.onRequestPermissionsResult(code, perms, results);
+            return;
+        }
+        locAsking = false;
+        if (granted(Manifest.permission.ACCESS_FINE_LOCATION) ||
+            granted(Manifest.permission.ACCESS_COARSE_LOCATION)) {
+            locPrefs().edit().putBoolean("refused", false).apply();
+            if (locOn) startLocation();
+        } else {
+            locOn = false;
+            locPrefs().edit().putBoolean("refused", true).apply();
+        }
+    }
+
+    private void takeFix(Location l) {
+        if (l == null) return;
+        final int p = LocationManager.GPS_PROVIDER.equals(l.getProvider()) ? 0
+                    : LocationManager.NETWORK_PROVIDER.equals(l.getProvider()) ? 1
+                    : "fused".equals(l.getProvider()) ? 2 : 3;
+        final double t = l.getElapsedRealtimeNanos() / 1e9;
+        final float acc = l.hasAccuracy() ? l.getAccuracy() : 0f;
+        final double[] cur = locFix;
+        // keep the better of the two: a newer fix wins unless it is much worse
+        // and the old one is still fresh (a network fix must not undo a GPS one)
+        if (cur != null && t - cur[3] < 10.0 && acc > 0 && cur[2] > 0 && acc > cur[2] * 2.0) return;
+        locFix = new double[] {l.getLatitude(), l.getLongitude(), acc, t, p};
+    }
+
+    private void startLocation() {
+        LocationManager lm = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+        if (lm == null) return;
+        if (locListener == null)
+            locListener = new LocationListener() {
+                @Override public void onLocationChanged(Location l) { takeFix(l); }
+                @Override public void onProviderEnabled(String p) {}
+                @Override public void onProviderDisabled(String p) {}
+                @SuppressWarnings("deprecation")
+                @Override public void onStatusChanged(String p, int s, Bundle b) {}
+            };
+        try {
+            for (String p : new String[] {LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER}) {
+                if (!lm.getAllProviders().contains(p)) continue;
+                takeFix(lm.getLastKnownLocation(p)); // something to show at once
+                lm.requestLocationUpdates(p, 1000L, 0f, locListener, Looper.getMainLooper());
+            }
+        } catch (SecurityException e) {
+            locOn = false; // revoked between the check and the call
+        }
+    }
+
+    private void stopLocation() {
+        LocationManager lm = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+        if (lm != null && locListener != null) lm.removeUpdates(locListener);
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        if (locOn) stopLocation(); // resumes below; locOn is what native code asked for
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (locOn && (granted(Manifest.permission.ACCESS_FINE_LOCATION) ||
+                      granted(Manifest.permission.ACCESS_COARSE_LOCATION)))
+            startLocation();
     }
 
     // ── native → Java (any thread; the work happens on the UI thread) ────────

@@ -588,8 +588,8 @@ jobject app_context(JNIEnv* env, ANativeActivity* a) {
 
 } // namespace
 
-Http android_http(ANativeActivity* activity) {
-    return [activity](const std::string& url, const fs::path& to) {
+Http android_http(ANativeActivity* activity, const std::string& user_agent) {
+    return [activity, user_agent](const std::string& url, const fs::path& to) {
         HttpResult r;
         if (!safe_url(url)) {
             r.error = "refusing \"" + url + "\": not a plain https URL";
@@ -613,6 +613,13 @@ Http android_http(ANativeActivity* activity) {
         env->CallVoidMethod(conn, env->GetMethodID(conn_cls, "setInstanceFollowRedirects", "(Z)V"), JNI_TRUE);
         env->CallVoidMethod(conn, env->GetMethodID(conn_cls, "setConnectTimeout", "(I)V"), 15000);
         env->CallVoidMethod(conn, env->GetMethodID(conn_cls, "setReadTimeout", "(I)V"), 60000);
+        if (!user_agent.empty()) {
+            jstring k = env->NewStringUTF("User-Agent"), v = env->NewStringUTF(user_agent.c_str());
+            env->CallVoidMethod(conn, env->GetMethodID(conn_cls, "setRequestProperty",
+                                                       "(Ljava/lang/String;Ljava/lang/String;)V"), k, v);
+            env->DeleteLocalRef(k);
+            env->DeleteLocalRef(v);
+        }
         jint status = env->CallIntMethod(conn, env->GetMethodID(conn_cls, "getResponseCode", "()I"));
         if (e.failed(r.error, "HTTP request")) return r;
         r.status = status;
@@ -712,7 +719,7 @@ bool android_install_package(ANativeActivity* activity, const fs::path& apk, std
 
 #else
 
-Http android_http(ANativeActivity*) { return {}; }
+Http android_http(ANativeActivity*, const std::string&) { return {}; }
 
 bool android_install_package(ANativeActivity*, const fs::path&, std::string* error) {
     if (error) *error = "not Android";

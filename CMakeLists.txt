@@ -115,6 +115,7 @@ add_library(voidmaiz STATIC
   src/gesture/tags.cpp
   src/input/textinput.cpp
   src/input/documents.cpp   # the system picker / save dialog (Android; false elsewhere)
+  src/input/location.cpp    # where the device is (Android; a stand-in elsewhere)
   src/touch/touch.cpp
   src/presence/presence.cpp
   src/presence/claims.cpp
@@ -386,6 +387,11 @@ add_test(NAME textinput_smoke COMMAND maiz_textinput_smoke)
 add_executable(maiz_textinput_view_smoke tests/textinput_view_smoke.cpp)
 target_link_libraries(maiz_textinput_view_smoke PRIVATE voidmaiz_view)
 add_test(NAME textinput_view_smoke COMMAND maiz_textinput_view_smoke)
+
+# the touch gate's map gestures on a real ImGui, and the location stand-in (2026-10-04)
+add_executable(maiz_touch_gate_smoke tests/touch_gate_smoke.cpp)
+target_link_libraries(maiz_touch_gate_smoke PRIVATE voidmaiz_view)
+add_test(NAME touch_gate_smoke COMMAND maiz_touch_gate_smoke)
 
 add_executable(maiz_touch_smoke tests/touch_smoke.cpp)
 target_link_libraries(maiz_touch_smoke PRIVATE voidmaiz)
