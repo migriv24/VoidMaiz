@@ -4,7 +4,8 @@
  * safe area, and (2026-09-25) the system's document picker and save dialog
  * (voidmaiz/documents.hpp), which is how a photo or a file gets on and off a
  * phone, and (2026-10-04) where the phone is (voidmaiz/location.hpp): the
- * location permission, asked only when native code asks, and LocationManager.
+ * location permission, asked only when native code asks, and LocationManager;
+ * and the radios (voidmaiz/radio.hpp), Bluetooth LE and Wi-Fi Direct, in MaizRadio.java.
  *
  * A NativeActivity cannot receive a keyboard properly. With no View that is a
  * text editor, Android's input methods fall back to sending bare key events,
@@ -379,8 +380,26 @@ public class MaizActivity extends NativeActivity {
         return new double[] {f[0], f[1], f[2], SystemClock.elapsedRealtimeNanos() / 1e9 - f[3], f[4]};
     }
 
+    // ── the radios (voidmaiz/radio.hpp): MaizRadio owns them; native code calls these ──
+    private MaizRadio radio;
+    private MaizRadio radio() {
+        if (radio == null) radio = new MaizRadio(this);
+        return radio;
+    }
+    public int maizRadioAccess(int kind) { return radio().access(kind); }
+    public boolean maizRadioRequest(int kind) { return radio().request(kind); }
+    public boolean maizRadioStart(int kind, String tag) { return radio().start(kind, tag); }
+    public void maizRadioStop(int kind) { radio().stop(kind); }
+    public boolean maizRadioConnect(int kind, String peer) { return radio().connect(kind, peer); }
+    public boolean maizRadioDisconnect(int kind, String peer) { return radio().disconnect(kind, peer); }
+    public boolean maizRadioSend(String peer, byte[] bytes) { return radio().send(peer, bytes); }
+    public int maizRadioBacklog(String peer) { return radio().backlog(peer); }
+    public String[] maizRadioTake() { return radio().take(); }
+    public byte[] maizRadioTakeBytes() { return radio().takeBytes(); }
+
     @Override
     public void onRequestPermissionsResult(int code, String[] perms, int[] results) {
+        if (radio != null && radio.onPermissions(code)) return;
         if (code != LOC_REQUEST) {
             super.onRequestPermissionsResult(code, perms, results);
             return;

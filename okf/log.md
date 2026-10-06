@@ -7387,3 +7387,25 @@ Measured: `touch_gate_smoke` passes; the rest of the suite is as it was (the
 known `reduce_conformance` red fails identically on the untouched tree). Void
 Hormiga's phone harness drove all five gestures and a granted and a refused
 location through its map.
+
+## 2026-10-05 — Radios: Bluetooth LE and Wi-Fi Direct, and Reticulum over them
+
+Void Hormiga's author asked for phones that share with no Wi-Fi in common, over Wi-Fi
+Direct and Bluetooth, never a hotspot, with Reticulum on top; and gave this session the
+grant to build it here, where reaching a device belongs. [Radios](/concepts/radios.md):
+
+- **The radio holiday** (`voidmaiz/radio.hpp`, `src/input/radio.cpp`,
+  `MaizRadio.java` through `MaizActivity.maizRadio*`): LE advertise + scan with an
+  application tag, a GATT byte stream each way with one write in flight; Wi-Fi Direct
+  DNS-SD and groups; the "Nearby devices" permissions; Unavailable on an older activity.
+- **`loopback_radio`** (`src/lan/radio_loopback.cpp`): the desktop stand-in, a throttled
+  local TCP stream.
+- **The bridge** (`voidmaiz/rnsradio.hpp`, `src/net/rnsradio.cpp`): LE peers as Palabra
+  pipes with HDLC, a Wi-Fi Direct group as a UDP interface; built only with Reticulum.
+  Palabra gained the pipes and runtime interfaces the same day.
+
+Measured: `maiz_radio_smoke` (HDLC under every split; two processes, no UDP, 30 KB
+echoed as a Resource over "LE" at 8 KB/s, the tag and a transfer seen). Void Hormiga
+synced two members over it and drew the bars. Nothing has run on a phone; Wi-Fi Direct
+has no stand-in. The lan-transport page's hotspot lean is superseded by the author's
+ruling, and the page now says so.

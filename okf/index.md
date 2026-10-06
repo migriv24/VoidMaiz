@@ -183,6 +183,11 @@ persistence are inherited from Void Core rather than bolted on.
   second transport behind the same seam but costs a Java `BroadcastReceiver`,
   `NEARBY_WIFI_DEVICES` and a second discovery protocol, and **Wi-Fi Aware** is
   a hardware gamble. `lan::network_hint` lets the panel say which it is on.
+- **[Radios](/concepts/radios.md)** (2026-10-05, for Void Hormiga's phones):
+  Bluetooth LE and Wi-Fi Direct as a holiday (`voidmaiz/radio.hpp`: tag,
+  advertise, scan, a byte stream; a group), and the bridge that makes them
+  Reticulum interfaces (`voidmaiz/rnsradio.hpp`: an LE peer is a pipe, a group a
+  UDP interface). Supersedes the hotspot lean above: the author ruled it out.
 - **[Updates](/concepts/updates.md)** (2026-09-21, on the author's call "all
   applications should be able to update themselves"): Void Mago owns what a release
   IS (`void-updates.json`, build-time only); Void Maiz owns the in-app client

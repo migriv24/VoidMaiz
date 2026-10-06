@@ -7,6 +7,11 @@ tags: [status:current, audience:dev, audience:host, confidence:asserted]
 timestamp: 2026-09-22T00:00:00Z
 ---
 
+> **Superseded in part, 2026-10-05.** Void Hormiga's author ruled the hotspot out
+> ("a big waste of data plans and money ... not everyone can easily do hotspot") and
+> asked for Wi-Fi Direct and Bluetooth LE with Reticulum on top. They are built:
+> [radios](/concepts/radios.md). The ownership line below is unchanged.
+
 The author, 2026-09-22:
 
 > it could also be usefull to look into wifi direct on android, to have 2 android

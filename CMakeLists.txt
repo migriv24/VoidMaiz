@@ -116,6 +116,7 @@ add_library(voidmaiz STATIC
   src/input/textinput.cpp
   src/input/documents.cpp   # the system picker / save dialog (Android; false elsewhere)
   src/input/location.cpp    # where the device is (Android; a stand-in elsewhere)
+  src/input/radio.cpp       # Bluetooth LE and Wi-Fi Direct (Android; a loopback stand-in in voidmaiz_lan)
   src/touch/touch.cpp
   src/presence/presence.cpp
   src/presence/claims.cpp
@@ -152,7 +153,7 @@ endif()
 # addresses, the join code, and Android's Wi-Fi multicast lock. Opens no socket
 # (the transport is Void Palabra's). Its own target so an application that never
 # networks links no socket library.
-add_library(voidmaiz_lan STATIC src/lan/lan.cpp)
+add_library(voidmaiz_lan STATIC src/lan/lan.cpp src/lan/radio_loopback.cpp)
 target_include_directories(voidmaiz_lan PUBLIC include)
 target_compile_features(voidmaiz_lan PUBLIC cxx_std_20)
 if(WIN32)
@@ -237,7 +238,7 @@ if(EXISTS "${VOIDPALABRA_ROOT}/include/voidpalabra/sync.hpp")
   target_link_libraries(voidmaiz_net PUBLIC voidmaiz voidmaiz_lan voidpalabra::voidpalabra)
   target_compile_definitions(voidmaiz_net PRIVATE CJSON_HIDE_SYMBOLS)
   if(MAIZ_RETICULUM AND TARGET voidpalabra_reticulum)
-    target_sources(voidmaiz_net PRIVATE src/net/rnslink.cpp)
+    target_sources(voidmaiz_net PRIVATE src/net/rnslink.cpp src/net/rnsradio.cpp)
     target_link_libraries(voidmaiz_net PUBLIC voidpalabra::reticulum)
     target_compile_definitions(voidmaiz_net PUBLIC VOIDMAIZ_RETICULUM=1)
     set(VOIDMAIZ_HAVE_RNS ON)
@@ -470,6 +471,13 @@ if(VOIDMAIZ_HAVE_NET)
   # the same over Reticulum: host and joiners are separate PROCESSES (Reticulum's
   # transport is process-wide), real UDP on loopback, join / Allow / Deny / back
   if(VOIDMAIZ_HAVE_RNS)
+    # Reticulum over a radio (the loopback stand-in for Bluetooth LE), two processes (2026-10-05)
+    add_executable(maiz_radio_smoke tests/radio_smoke.cpp)
+    target_link_libraries(maiz_radio_smoke PRIVATE voidmaiz_net)
+    if(MINGW)
+      target_link_options(maiz_radio_smoke PRIVATE -static)
+    endif()
+    add_test(NAME radio_smoke COMMAND maiz_radio_smoke)
     add_executable(maiz_rnslink_smoke tests/rnslink_smoke.cpp)
     target_link_libraries(maiz_rnslink_smoke PRIVATE voidmaiz_net)
     target_include_directories(maiz_rnslink_smoke PRIVATE vendor)
