@@ -49,6 +49,7 @@
 #include <functional>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <vector>
 
 namespace maiz {
@@ -118,6 +119,7 @@ struct SurfaceDecl {
     Mark mark = Mark::Outline;
     std::vector<std::string> runes; // rune ids shown this frame, in declaration order
     bool focused = false;           // the one the person is working in
+    std::unordered_set<std::string> shown; // `runes` again, to answer "already shown?" in O(1)
 };
 
 class Surfaces {

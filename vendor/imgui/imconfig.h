@@ -116,7 +116,11 @@
 // Your renderer backend will need to support it (most example renderer backends support both 16/32-bit indices).
 // Another way to allow large meshes while keeping 16-bit indices is to handle ImDrawCmd::VtxOffset in your renderer.
 // Read about ImGuiBackendFlags_RendererHasVtxOffset for details.
-//#define ImDrawIdx unsigned int
+// VOID MAIZ (2026-10-15): ON. Windows asks for an OpenGL 3.0 context, and an
+// Intel driver answers with exactly 3.0, where the GL3 backend cannot use
+// VtxOffset; so a window past 65,535 vertices (Void Hormiga's map with ~2,000
+// markers) drew garbage. 32-bit indices work on GL 3.0 and GLES 3 alike.
+#define ImDrawIdx unsigned int
 
 //---- Override ImDrawCallback signature (will need to modify renderer backends accordingly)
 //struct ImDrawList;

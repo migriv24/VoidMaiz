@@ -7409,3 +7409,22 @@ echoed as a Resource over "LE" at 8 KB/s, the tag and a transfer seen). Void Hor
 synced two members over it and drew the bars. Nothing has run on a phone; Wi-Fi Direct
 has no stand-in. The lan-transport page's hotspot lean is superseded by the author's
 ruling, and the page now says so.
+
+## 2026-10-15 — Two fixes found by Void Hormiga's map at 2,000 markers
+
+Void Hormiga's agent measured its map with 2,000 places (the author's ask: "we
+need something a bit faster"), with the author's standing permission to work
+here directly. Two things were this library's:
+
+- **`Surfaces::show` is O(1) per call.** It kept "each rune once per surface" by
+  scanning `SurfaceDecl::runes`, so a surface showing n runes cost n²/2 string
+  compares a frame: 6.9 ms of Hormiga's frame at 2,000 markers, 0.8 ms after.
+  `SurfaceDecl` gains `shown`, an `unordered_set` beside `runes`; the order and
+  the once-only rule are unchanged.
+- **32-bit ImGui draw indices** (`vendor/imgui/imconfig.h`). Windows asks for an
+  OpenGL 3.0 context, and an Intel driver (32.0.101.7085) returns exactly 3.0,
+  where the GL3 backend does not enable `RendererHasVtxOffset`; a window past
+  65,535 vertices then draws garbage. Seen as Hormiga's map smeared across the
+  screen. 32-bit indices work on GL 3.0 and GLES 3; nothing in this library or
+  its known clients assumes 16-bit (`ImDrawIdx` appears nowhere outside the
+  vendor tree). Every client recompiles ImGui with it.

@@ -145,9 +145,10 @@ void Surfaces::declare(std::string_view surface_id, std::string_view kind, Mark 
 void Surfaces::show(std::string_view surface_id, std::string_view rune_id) {
     if (rune_id.empty()) return;
     SurfaceDecl& d = decl_for(surface_id);
-    // a list that draws the same rune twice still shows it once
-    if (std::find(d.runes.begin(), d.runes.end(), rune_id) == d.runes.end())
-        d.runes.emplace_back(rune_id);
+    // a list that draws the same rune twice still shows it once. A set, not a
+    // scan of `runes`: a map of 2,000 markers made this 4 million string
+    // compares a frame (Void Hormiga measured 6.9 ms of its frame, 2026-10-15)
+    if (d.shown.emplace(rune_id).second) d.runes.emplace_back(rune_id);
 }
 
 void Surfaces::focus(std::string_view surface_id) {
