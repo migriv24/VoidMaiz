@@ -7520,3 +7520,47 @@ on the local `ios` branch for the author.
 had listed as unanswered. All answered; replies listed in the
 [index](/index.md). Q39 (take the console into the library, lean yes: two hosts
 wrote it) and Q40 (VLS's shared musical clock) opened.
+
+## 2026-10-17 (second pass) — The field network: a carried router for 40+ mixed devices, and a hardware section
+
+The author asked for a research phase on iOS and collaboration between devices,
+for a Void Hormiga client: *"40+ devices in a single room to be updated and
+communicating with each other … a mix of apple and android devices. Using
+Bluetooth would be slow, and so having a mini router would be great. They're
+usually off grid and on the move."* The device: a mobile "universal router"
+without internet, scaling by adding units, fitting in a backpack, compatible
+with Void Buzz, and not a Void Buzz Tree (it moves). And: *"I'll be the one to
+purchase the hardware … we might need a mini section in the okf just to help with
+real physical hardware set up … generalizable … 1-6 devices would require a
+different set up than 50+."*
+
+**What the research settled:**
+- Between iPhone and Android with no infrastructure, only **Bluetooth LE**
+  crosses, at about 20 KB/s (Ditto's transport table); each platform's
+  peer-to-peer Wi-Fi (AWDL, Wi-Fi Aware) finds only its own platform; iOS 26's
+  Wi-Fi Aware is unconfirmed against Android. **A shared Wi-Fi is the only fast
+  common link**, so a group carries one.
+- An **ESP32 cannot be that router** for this client: its soft AP takes 15
+  stations at most, and NimBLE 9 connections. It stays as an optional radio
+  bridge (Bluetooth LE, ESP-NOW for Void Buzz, LoRa between kits).
+- **iOS needs no broadcast on a kit**: the brain is found by Bonjour (allowed for
+  declared service types), a DNS name or a fixed address. The existing iOS
+  Reticulum clients already connect by TCP to an `rnsd`; Sideband for iOS is
+  still a TestFlight beta.
+- Two traps: **Android routes app traffic over mobile data when the Wi-Fi has no
+  internet** (fix: bind sockets to the Wi-Fi network), and both platforms probe
+  for internet (fix on an off-grid kit: answer the probes locally, Q42).
+- Wi-Fi planning figure: **25–30 active clients per radio**, about 50 per
+  dual-band unit, far below vendor association claims.
+
+**Written:** [the field network](/concepts/field-network.md) (roles: access
+point, brain, power, radio bridge; a **star** through the brain, 40 links not
+780; presence coalescing as the first software need; scaling; Reticulum brain to
+brain; Void Buzz) and a new **[hardware](/hardware/index.md)** section:
+[choosing](/hardware/choosing.md) (tiers by device count, specifications first,
+dated examples, battery arithmetic under the 100 Wh airline limit) and
+[setup](/hardware/setup.md) (step by step for the Room tier, the at-home test,
+packing, troubleshooting). Q38 updated (the kit settles discovery), Q41 (the
+room host, lean: library loop + app's HostApp) and Q42 (probe answers) opened.
+A note to Void Buzz and a section for Void Hormiga's client added to today's
+message. Nothing bought, built or measured: all `confidence:asserted`.

@@ -145,6 +145,16 @@ So the order for networking on iOS: Bonjour discovery behind a seam, then the
 existing sessions over unicast, then CoreBluetooth for LE, then Wi-Fi Aware when
 someone can test it against an Android phone.
 
+**For many phones at once, the answer is a carried network** (2026-10-17):
+[the field network](/concepts/field-network.md). Research confirmed what the
+table above implies: between iPhone and Android the only fast link is a shared
+Wi-Fi, so a group off the grid carries one (travel routers with no uplink, an
+always-on brain, batteries), and every iPhone finds the brain by Bonjour or a
+known address, with no broadcast needed. The buying and setup guide is
+[hardware](/hardware/index.md). The existing iOS Reticulum apps connect the same
+way (TCP to an `rnsd`); the official Sideband for iOS is still a TestFlight
+beta, held back by iOS's limits on background work.
+
 ## The App Store: the work list
 
 What the library already does, and what remains, for the first submission of a

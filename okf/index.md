@@ -137,6 +137,20 @@ persistence are inherited from Void Core rather than bolted on.
   multicast need an Apple-granted entitlement, so discovery moves to Bonjour,
   Q38; Wi-Fi Direct does not exist there; LE reaches Android); and the App Store
   path as a work list. The shell (`src/shell/shell_ios.mm`) is compiled only by CI.
+- **[The field network](/concepts/field-network.md)** (2026-10-17, draft): 40+
+  Apple and Android devices in one room, off the grid, kept in sync. Phone-only
+  options do not scale (each platform's peer-to-peer Wi-Fi stays on its own side,
+  and Bluetooth LE is about 20 KB/s), so the group **carries a Wi-Fi network with
+  no internet and an always-on brain** holding the room's copy. A star (40 links,
+  not 780); the brain found by Bonjour, a name or an address, so iOS needs no
+  broadcast; Reticulum brain to brain between kits; scaling by adding units; Void
+  Buzz kept compatible. Q41 (the room host), Q42 (answering internet probes).
+- **[Hardware](/hardware/index.md)** (2026-10-17, draft): **the physical side,
+  for anyone deploying a Void Maiz application**. [Choosing a kit](/hardware/choosing.md)
+  by device count (Pocket 1–6, Small 7–25, Room 26–60, Hall 61–150; Venue
+  150–300 design only), by specification with dated examples and battery
+  arithmetic; [setting one up](/hardware/setup.md), with the at-home test,
+  packing, and a troubleshooting table. Nothing bought or measured yet.
 - **[Touch](/concepts/touch.md)** — what a finger changes and what it does not
   (opened 2026-09-13, ahead of Void Hormiga going mobile). The **deferred
   press**: tap, drag and long press are told apart BEFORE a pointer is
@@ -292,6 +306,10 @@ Q39 (the console, lean yes) and Q40 (the musical clock).
   that folds in angle and distance, surface-local pointers with a tool type,
   focus, visibility as lifecycle, occlusion as a safe area).
 - `../VoidLoopsStudio/MESSAGE_FOR_VOIDLOOPSSTUDIO_maiz-bounce-needs-no-new-mark-and-the-clock-2026-10-17.md`
+- `../Void Buzz/MESSAGE_FOR_VOIDBUZZ_maiz-a-carried-network-and-what-it-assumes-of-you-2026-10-17.md`
+  — the [field network](/concepts/field-network.md) kept out of their vocabulary
+  (not a Tree), and the three things it assumes of them (2.4 GHz Flowers, ESP-NOW /
+  LE through the radio bridge, LoRa beyond the room). No reply needed unless wrong.
 
 **Open: Void Maiz → Void Mago**, 2026-09-21:
 `../VoidMago/MESSAGE_FOR_VOIDMAGO_maiz-updates-read-your-feed-now-and-two-asks-2026-09-21.md`
