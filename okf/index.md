@@ -145,12 +145,11 @@ persistence are inherited from Void Core rather than bolted on.
   not 780); the brain found by Bonjour, a name or an address, so iOS needs no
   broadcast; Reticulum brain to brain between kits; scaling by adding units; Void
   Buzz kept compatible. Q41 (the room host), Q42 (answering internet probes).
-- **[Hardware](/hardware/index.md)** (2026-10-17, draft): **the physical side,
-  for anyone deploying a Void Maiz application**. [Choosing a kit](/hardware/choosing.md)
-  by device count (Pocket 1–6, Small 7–25, Room 26–60, Hall 61–150; Venue
-  150–300 design only), by specification with dated examples and battery
-  arithmetic; [setting one up](/hardware/setup.md), with the at-home test,
-  packing, and a troubleshooting table. Nothing bought or measured yet.
+- **[Hardware](/hardware/index.md)**: a pointer. The field kit's buying and
+  setup guides (tiers Pocket 1–6 to Hall 61–150) and the research behind them
+  **moved to Void Hammer** (`../VoidHammer`) on 2026-10-17, the day the author
+  founded it as the family's dictionary of hardware and tutorials. Void Maiz
+  owns reaching a device; Void Hammer owns the device.
 - **[Touch](/concepts/touch.md)** — what a finger changes and what it does not
   (opened 2026-09-13, ahead of Void Hormiga going mobile). The **deferred
   press**: tap, drag and long press are told apart BEFORE a pointer is

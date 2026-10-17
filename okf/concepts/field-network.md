@@ -17,8 +17,12 @@ able to scale by adding units, fitting in a backpack, and compatible with Void
 Buzz. Not 300+ devices yet, but designed so that would not need a different
 architecture.
 
-This page is the design. **[Hardware](/hardware/index.md)** is the buying and
-setup guide, by size, for anyone running a Void Maiz application this way.
+This page is the design. The buying and setup guide, by size, for anyone
+running a Void Maiz application this way, lives in **Void Hammer**
+(`VoidHammer:/guides/field-kit/index.md`), founded the same day as the
+family's dictionary of hardware; so does the full research report
+(`VoidHammer:/research/off-grid-collaboration.md`). [Hardware](/hardware/index.md)
+here is the pointer.
 
 > **Confidence.** Researched, not built or measured. No kit has been bought.
 > Every number below is a vendor claim, a published planning figure or
@@ -49,7 +53,8 @@ belongs to the group, and does nothing else.
 ## The kit, as roles
 
 A kit is four roles. Small kits put several roles in one box; large kits give
-each its own. The roles are the design; the boxes are the [hardware](/hardware/index.md).
+each its own. The roles are the design; the boxes are Void Hammer's
+(`VoidHammer:/guides/field-kit/choosing.md`).
 
 1. **Access point (AP).** Wi-Fi with no internet: one network name, DHCP,
    local DNS, no client isolation (members must reach each other). Add more APs

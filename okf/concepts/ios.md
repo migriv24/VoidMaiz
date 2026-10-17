@@ -151,7 +151,7 @@ table above implies: between iPhone and Android the only fast link is a shared
 Wi-Fi, so a group off the grid carries one (travel routers with no uplink, an
 always-on brain, batteries), and every iPhone finds the brain by Bonjour or a
 known address, with no broadcast needed. The buying and setup guide is
-[hardware](/hardware/index.md). The existing iOS Reticulum apps connect the same
+[hardware](/hardware/index.md) (now in Void Hammer). The existing iOS Reticulum apps connect the same
 way (TCP to an `rnsd`); the official Sideband for iOS is still a TestFlight
 beta, held back by iOS's limits on background work.
 

@@ -30,7 +30,7 @@ in chat, or via FaultSack notes; answers fold into concepts and clear from here.
   internet waits for a timeout instead of failing at once. **Lean: yes on a kit
   with no uplink, never on one with an uplink**, and the library binds its
   Android sockets to the Wi-Fi network regardless, so the app does not depend on
-  the trick. Written into [setup](/hardware/setup.md) as an off-grid step.
+  the trick. Written into Void Hammer's setup guide (`VoidHammer:/guides/field-kit/setup.md`, step 1.7) as an off-grid step.
 
 - **Q38 — how does a Void Maiz app find others on the LAN on iOS?** Raised
   2026-10-17 while designing the iOS shell ([ios](/concepts/ios.md)). iOS

@@ -10,7 +10,7 @@ timestamp: 2026-09-22T00:00:00Z
 > **2026-10-17: for many devices, a carried router.** Forty mixed Apple and
 > Android devices in one room, off the grid, get a dedicated Wi-Fi with no
 > uplink and an always-on brain: [the field network](/concepts/field-network.md),
-> with a buying and setup guide in [hardware](/hardware/index.md). It is not the
+> with a buying and setup guide in [hardware](/hardware/index.md) (now in Void Hammer). It is not the
 > hotspot ruled out below: it spends nobody's data plan and belongs to the group.
 >
 > **Superseded in part, 2026-10-05.** Void Hormiga's author ruled the hotspot out

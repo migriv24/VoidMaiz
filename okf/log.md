@@ -7564,3 +7564,39 @@ packing, troubleshooting). Q38 updated (the kit settles discovery), Q41 (the
 room host, lean: library loop + app's HostApp) and Q42 (probe answers) opened.
 A note to Void Buzz and a section for Void Hormiga's client added to today's
 message. Nothing bought, built or measured: all `confidence:asserted`.
+
+## 2026-10-17 (third pass) — Void Hammer founded; the hardware moves there
+
+The author asked for more research (other open-source projects, recent academic
+work, phone add-ons, a laptop over USB, ideas outside the obvious) and then
+founded a new application: *"a dictionary for how to set up hardware for other
+devices, and easily flash code on them … keeps track of pricing … which vendors
+… bulk purchases … our own format for the documentation to make it easier to
+learn from."* Proposed as Void Lightyear; founded as **Void Hammer** (the
+author's fallback: "Lightyear" is an operating company, and beside Void Buzz it
+reads as Disney's Buzz Lightyear). `../VoidHammer`: OKF only, no code, a
+CLAUDE.md, and a bundle Void Core's OKF engine validates as conformant.
+
+**Moved:** this bundle's `hardware/choosing.md` and `hardware/setup.md` (written
+earlier today) now live at `VoidHammer:/guides/field-kit/`; the setup guide was
+rewritten there in the Hammer format (steps with ids, each with what you should
+see and what to do if not). `hardware/index.md` here is a pointer.
+**Kept:** [the field network](/concepts/field-network.md), because what the
+library's software must do on such a network is Void Maiz's. The line: Void
+Maiz owns reaching a device; Void Hammer owns the device.
+
+**The research** went to `VoidHammer:/research/off-grid-collaboration.md`. What
+in it bears on this library's software: the Amigo paper (ACM CCS 2025: phone
+meshes collapse under realistic crowds) and the iOS background rule that keeps
+Briar off iOS both argue for the star through a brain; the two Bridgefy breaks
+(CT-RSA 2021, USENIX Security 2022) are why the kit's sessions must never be
+described as stronger than Palabra and Reticulum make them; delay-tolerant
+networking describes what the lattice merge already gives (a phone carrying a
+group's work to the next group); and Windows' hotspot stops at 8 devices by
+default, so a laptop is a brain, not a router.
+
+**On Void Hammer and Void Hormiga** (the author asked whether they share a
+lot): they do, and they share it through this library. Hammer is the second
+client that could justify lifting Hormiga's record list and detail views, CSV
+import and the console (Q39) into Void Maiz, once Hammer has code that needs
+them.
