@@ -12,7 +12,9 @@
  *     no screen claimed it: to the background, as Android 12+ does;
  *   - the safe area, re-read twice a second (rotation, navigation mode);
  *   - documents picked, saved and opened-with, delivered between frames;
- *   - the platform keyboard, location and the radios, installed once;
+ *   - the platform keyboard and location, installed once (the radios are
+ *     Void Hammer's since 2026-10-17: an app that wants them installs
+ *     maiz::android_radio(maiz::android_activity()) itself);
  *   - Background on pause, which is where an app saves.
  *
  * The manifest names org.voidmaiz.MaizActivity (android/java), hasCode="true",
@@ -22,7 +24,6 @@
 
 #include "voidmaiz/location.hpp"
 #include "voidmaiz/mobile.hpp"
-#include "voidmaiz/radio.hpp"
 #include "voidmaiz/textinputview.hpp"
 
 #include "imgui.h"
@@ -244,7 +245,6 @@ void backends_up(Shell& s) {
         setenv("TMPDIR", tmp.c_str(), 1);
         s.dev.keyboard = maiz::android_text_input(s.aapp->activity);
         maiz::install_location(maiz::android_location(s.aapp->activity));
-        maiz::install_radio(maiz::android_radio(s.aapp->activity)); // off until an app switches it on
         s.runner = std::make_unique<maiz::shell::Runner>(s.dev);
         s.runner->create();
         s.runner->start();

@@ -141,7 +141,6 @@ add_library(voidmaiz STATIC
   src/input/textinput.cpp
   src/input/documents.cpp   # the system picker / save dialog (Android; false elsewhere)
   src/input/location.cpp    # where the device is (Android; a stand-in elsewhere)
-  src/input/radio.cpp       # Bluetooth LE and Wi-Fi Direct (Android; a loopback stand-in in voidmaiz_lan)
   src/touch/touch.cpp
   src/presence/presence.cpp
   src/presence/claims.cpp
@@ -175,20 +174,6 @@ endif()
 target_link_libraries(voidmaiz PUBLIC "${VOIDCORE_LIBRARY}")
 if(NOT MSVC)
   target_compile_options(voidmaiz PRIVATE -Wall -Wextra)
-endif()
-
-# Platform facts for LAN discovery (okf/concepts/collaborative-canvas.md, E24-E30):
-# addresses, the join code, and Android's Wi-Fi multicast lock. Opens no socket
-# (the transport is Void Palabra's). Its own target so an application that never
-# networks links no socket library.
-add_library(voidmaiz_lan STATIC src/lan/lan.cpp src/lan/radio_loopback.cpp)
-target_include_directories(voidmaiz_lan PUBLIC include)
-target_compile_features(voidmaiz_lan PUBLIC cxx_std_20)
-if(WIN32)
-  target_link_libraries(voidmaiz_lan PUBLIC iphlpapi ws2_32)
-endif()
-if(NOT MSVC)
-  target_compile_options(voidmaiz_lan PRIVATE -Wall -Wextra)
 endif()
 
 # An application updating itself (okf/concepts/updates.md): asking permission,
@@ -240,46 +225,73 @@ if(NOT MSVC)
   target_compile_options(voidmaiz_headless PRIVATE -Wall -Wextra)
 endif()
 
-# ── Networking, stage C: Void Palabra's sync (optional) ──────────────────────
-# okf/concepts/networking.md. The ONLY target that links Void Palabra, and it is
-# built only when the sibling repo is present: an application that never
-# networks never needs Palabra checked out, and the build proves it.
+# ── Networking: Void Hammer's since 2026-10-17 ───────────────────────────────
+# Reaching devices (sockets, LAN facts, the multicast lock, the radios) and the
+# sync engine over Void Palabra (Network, LanSession, RnsSession, the radio
+# bridge) MOVED to Void Hammer (../VoidHammer/net), on the author's call: "have
+# hammer be the networking stuff and remove it from maiz, so that maiz becomes
+# more pure." Void Maiz keeps what networking LOOKS like (presence, claims,
+# marks, the session panels: presence.hpp, claims.hpp, netview.hpp, wires.hpp).
 #
-# Palabra is embedded the way it asks to be (its CMakeLists §"Consumed two ways")
-# — as a target, never a copied source list; the one list we did copy (Void
-# Core's, for Android) went months without a file. VENDOR_CJSON=OFF because we
-# already compile cJSON: one copy per process.
+# NOTHING A HOST WROTE CHANGES. The code moved with its maiz:: names; the old
+# headers (voidmaiz/lan.hpp, lanlink.hpp, net.hpp, rnslink.hpp, rnsradio.hpp,
+# radio.hpp) forward to voidhammer/*; and the old targets are kept below as
+# aliases: an extraction that breaks its adopters' builds has failed (the rule
+# the Allomone extraction set, 2026-08-29). Measured the day of the move:
+# Interaction Combinators and Void Hormiga built and passed exactly as before.
+#
+# Both siblings are OPTIONAL, as Palabra always was: without ../VoidHammer (or
+# without Palabra, for the sync engine) the library, its UI and its tests build,
+# and networking is simply absent, said in a message rather than failed.
 set(VOIDPALABRA_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../VoidPalabra" CACHE PATH
-    "Path to the Void Palabra repository (optional: enables voidmaiz_net)")
+    "Path to the Void Palabra repository (optional: enables the sync engine)")
+set(VOIDHAMMER_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../VoidHammer" CACHE PATH
+    "Path to the Void Hammer repository (optional: enables networking)")
 # Reticulum (2026-09-23: "let's just use reticulum for everything!"): Palabra's
-# optional companion voidpalabra_reticulum carries it, and voidmaiz/rnslink.hpp
-# (RnsSession) is LanSession's job done over it. ON everywhere: the vendored
-# microReticulum cross-compiles for Android arm64 with the NDK unchanged
-# (measured 2026-09-24).
-option(MAIZ_RETICULUM "voidmaiz_net carries RnsSession (Reticulum, through Void Palabra)" ON)
-if(EXISTS "${VOIDPALABRA_ROOT}/include/voidpalabra/sync.hpp")
+# optional companion voidpalabra_reticulum carries it, and RnsSession is
+# LanSession's job done over it. ON everywhere: the vendored microReticulum
+# cross-compiles for Android arm64 with the NDK unchanged (measured 2026-09-24).
+option(MAIZ_RETICULUM "the sync engine carries RnsSession (Reticulum, through Void Palabra)" ON)
+# Palabra is embedded the way it asks to be (its CMakeLists §"Consumed two
+# ways"): as a target, never a copied source list. VENDOR_CJSON=OFF because we
+# already compile cJSON (byte-identical to Palabra's and Core's, 1.7.18): one
+# copy per process. A parent that already added Palabra is respected.
+if(EXISTS "${VOIDPALABRA_ROOT}/include/voidpalabra/sync.hpp" AND NOT TARGET voidpalabra)
   set(VOIDPALABRA_VENDOR_CJSON OFF CACHE BOOL "" FORCE)
   set(VOIDPALABRA_RETICULUM ${MAIZ_RETICULUM} CACHE BOOL "" FORCE)
   add_subdirectory("${VOIDPALABRA_ROOT}" voidpalabra)
-  add_library(voidmaiz_net STATIC src/net/net.cpp src/net/lanlink.cpp)
-  target_include_directories(voidmaiz_net PUBLIC include PRIVATE vendor)
-  target_link_libraries(voidmaiz_net PUBLIC voidmaiz voidmaiz_lan voidpalabra::voidpalabra)
-  target_compile_definitions(voidmaiz_net PRIVATE CJSON_HIDE_SYMBOLS)
-  if(MAIZ_RETICULUM AND TARGET voidpalabra_reticulum)
-    target_sources(voidmaiz_net PRIVATE src/net/rnslink.cpp src/net/rnsradio.cpp)
-    target_link_libraries(voidmaiz_net PUBLIC voidpalabra::reticulum)
-    target_compile_definitions(voidmaiz_net PUBLIC VOIDMAIZ_RETICULUM=1)
-    set(VOIDMAIZ_HAVE_RNS ON)
+endif()
+set(VOIDMAIZ_HAVE_NET OFF)
+set(VOIDMAIZ_HAVE_RNS OFF)
+if(EXISTS "${VOIDHAMMER_ROOT}/net/CMakeLists.txt")
+  if(NOT TARGET voidhammer_reach)
+    set(VOIDMAIZ_VENDOR_DIR "${CMAKE_CURRENT_SOURCE_DIR}/vendor")
+    add_subdirectory("${VOIDHAMMER_ROOT}/net" voidhammer_net)
+  endif()
+  # radio.hpp lived in the base library, so the base still carries it: a host
+  # that included it while linking only `voidmaiz` keeps compiling.
+  target_link_libraries(voidmaiz PUBLIC voidhammer_reach)
+  # the old target names, for every host that links them
+  # Each alias must export exactly what the old target did, INCLUDING this
+  # repo's include/ (where the forwarding headers are): Void Hormiga's
+  # hormiga_sync links only voidmaiz_lan and includes voidmaiz/lan.hpp, and the
+  # first version of this alias, which exported only Hammer's include/, broke it
+  # (caught by building Hormiga against the move, 2026-10-17).
+  add_library(voidmaiz_lan INTERFACE)
+  target_include_directories(voidmaiz_lan INTERFACE include)
+  target_link_libraries(voidmaiz_lan INTERFACE voidhammer_reach)
+  if(TARGET voidhammer_net)
+    add_library(voidmaiz_net INTERFACE)
+    target_include_directories(voidmaiz_net INTERFACE include)
+    target_link_libraries(voidmaiz_net INTERFACE voidhammer_net)
+    set(VOIDMAIZ_HAVE_NET ON)
+    set(VOIDMAIZ_HAVE_RNS ${VOIDHAMMER_HAVE_RNS})
   else()
-    set(VOIDMAIZ_HAVE_RNS OFF)
+    message(STATUS "Void Palabra not found at ${VOIDPALABRA_ROOT}: the sync engine (voidmaiz_net) is not built")
   endif()
-  if(NOT MSVC)
-    target_compile_options(voidmaiz_net PRIVATE -Wall -Wextra)
-  endif()
-  set(VOIDMAIZ_HAVE_NET ON)
 else()
-  message(STATUS "Void Palabra not found at ${VOIDPALABRA_ROOT}: voidmaiz_net is not built")
-  set(VOIDMAIZ_HAVE_NET OFF)
+  message(STATUS "Void Hammer not found at ${VOIDHAMMER_ROOT}: networking (voidmaiz_lan, voidmaiz_net, "
+                 "radio.hpp) is not built. It moved there on 2026-10-17; clone it beside this repo.")
 endif()
 
 # ── Vendored UI substrate (Phase 2): Dear ImGui over the platform's GL ──────
@@ -395,7 +407,7 @@ elseif(ANDROID)
   add_library(voidmaiz_app STATIC src/shell/shell_android.cpp src/shell/frame.cpp
     "${ANDROID_NDK}/sources/android/native_app_glue/android_native_app_glue.c")
   target_include_directories(voidmaiz_app PUBLIC "${ANDROID_NDK}/sources/android/native_app_glue")
-  target_link_libraries(voidmaiz_app PUBLIC voidmaiz_view voidmaiz_lan)
+  target_link_libraries(voidmaiz_app PUBLIC voidmaiz_view)
 else()
   add_library(voidmaiz_app STATIC src/shell/shell_desktop.cpp src/shell/frame.cpp)
   target_link_libraries(voidmaiz_app PUBLIC voidmaiz_view)
@@ -540,46 +552,9 @@ add_executable(maiz_update_smoke tests/update_smoke.cpp)
 target_link_libraries(maiz_update_smoke PRIVATE voidmaiz_update)
 add_test(NAME update_smoke COMMAND maiz_update_smoke)
 
-add_executable(maiz_lan_smoke tests/lan_smoke.cpp)
-target_link_libraries(maiz_lan_smoke PRIVATE voidmaiz_lan)
-add_test(NAME lan_smoke COMMAND maiz_lan_smoke)
-
-# Stage C: real Cores syncing through Void Palabra over an in-memory lossy wire.
-# Only when Palabra is present — the same condition as the target itself.
-if(VOIDMAIZ_HAVE_NET)
-  add_executable(maiz_net_smoke tests/net_smoke.cpp)
-  target_link_libraries(maiz_net_smoke PRIVATE voidmaiz_net)
-  target_include_directories(maiz_net_smoke PRIVATE vendor)
-  add_test(NAME net_smoke COMMAND maiz_net_smoke)
-
-  # the pipes: two Cores over real TCP sockets (loopback), join / Allow / Deny
-  add_executable(maiz_lanlink_smoke tests/lanlink_smoke.cpp)
-  target_link_libraries(maiz_lanlink_smoke PRIVATE voidmaiz_net)
-  target_include_directories(maiz_lanlink_smoke PRIVATE vendor)
-  add_test(NAME lanlink_smoke COMMAND maiz_lanlink_smoke)
-
-  # the same over Reticulum: host and joiners are separate PROCESSES (Reticulum's
-  # transport is process-wide), real UDP on loopback, join / Allow / Deny / back
-  if(VOIDMAIZ_HAVE_RNS)
-    # Reticulum over a radio (the loopback stand-in for Bluetooth LE), two processes (2026-10-05)
-    add_executable(maiz_radio_smoke tests/radio_smoke.cpp)
-    target_link_libraries(maiz_radio_smoke PRIVATE voidmaiz_net)
-    if(MINGW)
-      target_link_options(maiz_radio_smoke PRIVATE -static)
-    endif()
-    add_test(NAME radio_smoke COMMAND maiz_radio_smoke)
-    add_executable(maiz_rnslink_smoke tests/rnslink_smoke.cpp)
-    target_link_libraries(maiz_rnslink_smoke PRIVATE voidmaiz_net)
-    target_include_directories(maiz_rnslink_smoke PRIVATE vendor)
-    if(MINGW)
-      # it starts itself as a child; a PATH holding another MinGW's libstdc++
-      # would break the child at load (found in Void Palabra's peer, 2026-09-23)
-      target_link_options(maiz_rnslink_smoke PRIVATE -static)
-    endif()
-    add_test(NAME rnslink_smoke COMMAND maiz_rnslink_smoke)
-    set_tests_properties(rnslink_smoke PROPERTIES TIMEOUT 180)
-  endif()
-endif()
+# lan_smoke, net_smoke, lanlink_smoke, radio_smoke and rnslink_smoke moved with
+# their code to Void Hammer (../VoidHammer/net), which registers them under the
+# same names whenever it is built from here.
 
 add_executable(maiz_usergraph_smoke tests/usergraph_smoke.cpp)
 target_link_libraries(maiz_usergraph_smoke PRIVATE voidmaiz)

@@ -7611,3 +7611,55 @@ originals fetched on demand** (new): ten 3 MB photos a minute pushed to 39
 others is about 160 Mbps, the one load that can saturate a room. Everything
 else in that research (airtime, channels, builds, power) is hardware and stays
 in Void Hammer.
+
+## 2026-10-17 (fifth pass) — Networking moves to Void Hammer; Void Maiz keeps what it looks like
+
+The author: *"we can begin having hammer be the networking stuff and remove it
+from maiz, so that maiz becomes more pure. But be very careful with this. Be sure
+things are using palabra correctly as well. Make sure that maiz maintains the
+functionality it had before, but with void hammer now being a big part of it."*
+
+**Moved to `../VoidHammer/net`** (`VoidHammer:/concepts/networking.md`):
+`lan`, `radio` (+ its loopback stand-in), `net` (`Network`), `lanlink`
+(`LanSession`), `rnslink` (`RnsSession`), `rnsradio`, and their five tests, as
+targets `voidhammer_reach` and `voidhammer_net`, built from this CMake when
+`../VoidHammer` exists. With them, the pages [LAN transport](/concepts/lan-transport.md),
+[radios](/concepts/radios.md) and [field network](/concepts/field-network.md)
+(pointers left here) and Q38, Q41, Q42 (Void Hammer's Q7–Q9). **Kept here**:
+presence, claims, `netview`, `wires`, the share filter, Allomone's `present`:
+what networking looks like (the Q30 line, unchanged).
+
+**How nothing broke**: the code moved with its `maiz::` names; the six old
+headers forward to `voidhammer/*`; `voidmaiz_lan` and `voidmaiz_net` remain as
+interface targets; the base `voidmaiz` links `voidhammer_reach` because
+`radio.hpp` used to be in the base; `VOIDMAIZ_RETICULUM`, `VOIDMAIZ_HAVE_NET`
+and `VOIDMAIZ_HAVE_RNS` are kept. Hammer is optional, as Palabra always was.
+
+**Measured, against baselines taken before touching anything:**
+
+| | before | after |
+|---|---|---|
+| Void Maiz | 26/26 (27 registered) | **26/26** (27 registered; the five networking tests built from Hammer) |
+| Interaction Combinators | builds; duo selftest all ok | **builds; duo selftest all ok**; Android library links from `libvoidhammer_*.a` with the sync engine in it |
+| Void Hormiga | builds; 55/56 (known `reduce_conformance`) | **builds; 55/56** (the same one) |
+
+**One break, caught by the baseline and fixed before commit**: Void Hormiga's
+`hormiga_sync` links only `voidmaiz_lan` and includes `voidmaiz/lan.hpp`; the
+first alias exported only Hammer's include folder, so even the forwarding header
+was not found. Each alias now exports this repo's `include/` too, exactly as the
+old targets did. The lesson, kept: **an alias must export everything the target
+it replaces exported, not only what its new home needs.**
+
+**Palabra, checked against its "consumed two ways"**: added as a target (now
+only if no parent added it), linked through its exported aliases, its cJSON off
+and ours linked (the Maiz, Palabra and Core copies are byte-identical, 1.7.18),
+Reticulum requested with Palabra's own MSVC switch respected, and its newest
+work (2026-10-05 pipes) the one the radio bridge and its tests use.
+
+**Also:** the portable-app Android shell no longer installs the radio platform
+(an app that wants radios installs it); CI clones `VoidHammer` if it exists (it
+has no public repository yet, so CI builds without networking and says so) and
+looks for `voidhammer_net` to report the networking configuration; CLAUDE.md
+gains the ground rule. Messages: Void Hormiga (§8 of today's), Interaction
+Combinators, Void Palabra, and, from Void Hammer, Void Chisme (cells want its
+plan and sensor).

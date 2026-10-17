@@ -1,7 +1,7 @@
 ---
 type: Questions
 title: Developer questions
-description: Open decisions for the author, each with a lean. Open — Q41 (the brain of a field kit: a room-host mode the library provides and each app fills; lean yes), Q42 (a kit with no uplink answers the phones' internet probes; lean yes, never with an uplink), Q38 (LAN discovery on iOS; lean Bonjour behind a discovery seam, not the multicast entitlement; the field kit makes it Bonjour + a known address), Q39 (take the console into the library; lean yes, two hosts wrote it, with a `source` on LogEntry), Q40 (a shared musical clock for Void Loops Studio; lean the app computes it, Palabra carries it, the library draws a transport strip once a second host wants one), Q27 (should wire routing be a CanvasStyle option; lean: Orthogonal yes but probably per-glyph, not per-canvas, and `Direct` is just correct behaviour rather than a mode), Q26 (where an act rune's role list lives; lean: a `roles` key on the descriptor, asked upstream rather than invented here), Q25 (which mantle a compiled attention graph belongs in; the Device enum is already generalized to an open channel string), Q23 (should JoinFn see the per-source grouping; lean yes, additively, when a client asks), Q22 (should identifiers accept non-ASCII; lean ASCII-only for now, widening is additive), Q21 (may the out-of-tree test harness have dependencies; lean stdlib-only Python), Q20 (whose attention the user action graph records — per-peer or shared across Palabra peers; has a privacy cost, decide before anything materializes one), Q16–Q19 (Void Hormiga's four Allomone boundary questions; the engine is built, the calls are the author's), Q12 (widget kit — ImGui-composed vs sanctioned Qt-class adapter), Q13 (surface-census trigger), Q14 (where a census bundle lands), Q15 (retarget moves to `place` now that Core 0.2.5 landed — takes moves out of undo). Q11 (workspace rung) decided 2026-07-20: enable ImGui docking. Q31–Q35 (collaborative canvas) decided 2026-09-20: the author accepted every lean. Q28 decided 2026-09-21: layout mechanisms in the library, layouts in the host. Q36 decided 2026-09-22: the LAN socket layer is voidmaiz_lan + LanSession. Q29 decided 2026-09-23: the platform keyboard, integrated as a holiday (concepts/text-input.md); the drawn keyboard is the fallback.
+description: Open decisions for the author, each with a lean. Open — (Q38, Q41 and Q42 moved to Void Hammer on 2026-10-17 as its Q7–Q9), Q39 (take the console into the library; lean yes, two hosts wrote it, with a `source` on LogEntry), Q40 (a shared musical clock for Void Loops Studio; lean the app computes it, Palabra carries it, the library draws a transport strip once a second host wants one), Q27 (should wire routing be a CanvasStyle option; lean: Orthogonal yes but probably per-glyph, not per-canvas, and `Direct` is just correct behaviour rather than a mode), Q26 (where an act rune's role list lives; lean: a `roles` key on the descriptor, asked upstream rather than invented here), Q25 (which mantle a compiled attention graph belongs in; the Device enum is already generalized to an open channel string), Q23 (should JoinFn see the per-source grouping; lean yes, additively, when a client asks), Q22 (should identifiers accept non-ASCII; lean ASCII-only for now, widening is additive), Q21 (may the out-of-tree test harness have dependencies; lean stdlib-only Python), Q20 (whose attention the user action graph records — per-peer or shared across Palabra peers; has a privacy cost, decide before anything materializes one), Q16–Q19 (Void Hormiga's four Allomone boundary questions; the engine is built, the calls are the author's), Q12 (widget kit — ImGui-composed vs sanctioned Qt-class adapter), Q13 (surface-census trigger), Q14 (where a census bundle lands), Q15 (retarget moves to `place` now that Core 0.2.5 landed — takes moves out of undo). Q11 (workspace rung) decided 2026-07-20: enable ImGui docking. Q31–Q35 (collaborative canvas) decided 2026-09-20: the author accepted every lean. Q28 decided 2026-09-21: layout mechanisms in the library, layouts in the host. Q36 decided 2026-09-22: the LAN socket layer is voidmaiz_lan + LanSession. Q29 decided 2026-09-23: the platform keyboard, integrated as a holiday (concepts/text-input.md); the drawn keyboard is the fallback.
 tags: [status:current, audience:dev, confidence:asserted]
 timestamp: 2026-08-09T00:00:00Z
 ---
@@ -11,50 +11,14 @@ in chat, or via FaultSack notes; answers fold into concepts and clear from here.
 
 # Open
 
-- **Q41 — the brain of a field kit: who writes the room host?** Raised
-  2026-10-17 by [the field network](/concepts/field-network.md): forty phones in a
-  room sync best through one always-on host (40 links instead of 780), carried in
-  the kit. That host must register the application's glyphs, so it cannot be one
-  generic binary. **Lean: the library provides the room-host loop** (an always-on
-  Session as the `LanSession` / `RnsSession` host, presence coalesced to one batch
-  per tick per member, sleepers caught up, Bonjour advertised) **and each
-  application provides its `HostApp`**, the same split headless already uses; a
-  build for Linux arm64 (and OpenWrt's musl, for a brain on the router). Until it
-  exists, a laptop running the desktop application as host is the brain.
+- **Q41 — the room host: MOVED to Void Hammer (its Q8) on 2026-10-17**, with
+  the networking code. See `VoidHammer:/developer_questions.md`.
 
-- **Q42 — should a kit answer the phones' internet probes?** iOS and Android
-  mark a Wi-Fi without internet ("No Internet"), and Android may route an app
-  over mobile data instead. A kit whose router answers `captive.apple.com` and
-  `connectivitycheck.gstatic.com` locally is treated as an ordinary network. The
-  cost: a phone believes it has internet, so something that needs the real
-  internet waits for a timeout instead of failing at once. **Lean: yes on a kit
-  with no uplink, never on one with an uplink**, and the library binds its
-  Android sockets to the Wi-Fi network regardless, so the app does not depend on
-  the trick. Written into Void Hammer's setup guide (`VoidHammer:/guides/field-kit/setup.md`, step 1.7) as an off-grid step.
+- **Q42 — answering the phones' internet probes: MOVED to Void Hammer (its Q9) on 2026-10-17**, with
+  the networking code. See `VoidHammer:/developer_questions.md`.
 
-- **Q38 — how does a Void Maiz app find others on the LAN on iOS?** Raised
-  2026-10-17 while designing the iOS shell ([ios](/concepts/ios.md)). iOS
-  refuses UDP broadcast and multicast to any app without
-  `com.apple.developer.networking.multicast`, an entitlement Apple grants on
-  request. `LanSession` discovers by broadcast beacon and Reticulum's automatic
-  interface by IPv6 multicast, so on an iPhone, as built, nothing is found.
-  Unicast is unaffected.
-
-  **Lean: a discovery seam with Bonjour (DNS-SD) on iOS**, declared in
-  `NSBonjourServices`, which needs no entitlement for the app's own service
-  type. The beacon stays on desktop and Android until there is a reason to move
-  them too (Android has NSD, Windows 10+ has DNS-SD, so one protocol everywhere
-  is possible later). Requesting the entitlement is the fallback: it puts the
-  family's networking behind an approval nobody controls. Where it lives follows
-  the ownership line already drawn ([lan transport](/concepts/lan-transport.md)):
-  reaching a device is ours. Not built; first after the shell is green.
-
-  **2026-10-17, later: the field kit settles the common case.** On a kit
-  ([field network](/concepts/field-network.md)) the brain is found by Bonjour
-  (advertised by the brain itself), then by a DNS name, then by a fixed address,
-  and everything after is unicast to it. No broadcast anywhere, so no
-  entitlement. The two existing iOS Reticulum clients already work this way
-  (TCP to an `rnsd`, never the multicast AutoInterface).
+- **Q38 — discovery without broadcast: MOVED to Void Hammer (its Q7) on 2026-10-17**, with
+  the networking code. See `VoidHammer:/developer_questions.md`.
 
 - **Q39 — does the console move into the library?** Two hosts have now written
   it: Void Hormiga's source-tagged console (2026-09-20: who said each line,

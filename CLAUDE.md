@@ -48,7 +48,13 @@ agent; until then, sessions may be shared with Void Loops Studio work.
 6. **Vendor, don't depend.** Third-party pieces (Dear ImGui, miniaudio-class
    single-file libs) are vendored with licenses, LiteGraph-style. No package
    managers, no CDNs, no frameworks.
-7. **The author decides.** Open design decisions go to `okf/developer_questions.md`
+7. **Networking is Void Hammer's** (`../VoidHammer`, since 2026-10-17): reaching
+   devices, the sync engine over Palabra, the radios, the field kit. Void Maiz
+   keeps what networking LOOKS like (presence, marks, claims, panels). The old
+   headers and targets (`voidmaiz/lan.hpp`…, `voidmaiz_lan`, `voidmaiz_net`)
+   forward there and must keep working until hosts move; do not add
+   networking code here.
+8. **The author decides.** Open design decisions go to `okf/developer_questions.md`
    with a lean; answers arrive inline, in chat, or via FaultSack notes.
 
 ## The reference implementation

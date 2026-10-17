@@ -7,6 +7,16 @@ tags: [status:current, audience:dev, audience:host, confidence:measured]
 timestamp: 2026-09-18T00:00:00Z
 ---
 
+> **2026-10-17: the engine moved to Void Hammer.** Stage C below
+> (`voidmaiz_net`: `Network`, `LanSession`, `RnsSession`) and the transports
+> (`voidmaiz_lan`, the radios) now live in `../VoidHammer/net`
+> (`VoidHammer:/concepts/networking.md`), with their `maiz::` names, forwarding
+> headers and alias targets, so nothing a host wrote changes. What this page
+> calls Void Maiz's share is unchanged and is now all Void Maiz keeps: **what
+> networking looks like** (surfaces, marks, presence, claims, the share filter,
+> the session panels). The Q30 line still holds: Void Maiz owns what networking
+> looks like, Palabra owns what networking is; reaching devices is Void Hammer's.
+
 Raised by Void Hormiga after its two-machine LAN test. The author's direction:
 *"a general universal networking ability should exist for any void maiz based
 application."* The author then clarified what to build: **not "Hormiga's

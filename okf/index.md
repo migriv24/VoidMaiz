@@ -137,19 +137,18 @@ persistence are inherited from Void Core rather than bolted on.
   multicast need an Apple-granted entitlement, so discovery moves to Bonjour,
   Q38; Wi-Fi Direct does not exist there; LE reaches Android); and the App Store
   path as a work list. The shell (`src/shell/shell_ios.mm`) is compiled only by CI.
-- **[The field network](/concepts/field-network.md)** (2026-10-17, draft): 40+
-  Apple and Android devices in one room, off the grid, kept in sync. Phone-only
-  options do not scale (each platform's peer-to-peer Wi-Fi stays on its own side,
-  and Bluetooth LE is about 20 KB/s), so the group **carries a Wi-Fi network with
-  no internet and an always-on brain** holding the room's copy. A star (40 links,
-  not 780); the brain found by Bonjour, a name or an address, so iOS needs no
-  broadcast; Reticulum brain to brain between kits; scaling by adding units; Void
-  Buzz kept compatible. Q41 (the room host), Q42 (answering internet probes).
-- **[Hardware](/hardware/index.md)**: a pointer. The field kit's buying and
-  setup guides (tiers Pocket 1–6 to Hall 61–150) and the research behind them
-  **moved to Void Hammer** (`../VoidHammer`) on 2026-10-17, the day the author
-  founded it as the family's dictionary of hardware and tutorials. Void Maiz
-  owns reaching a device; Void Hammer owns the device.
+- **Networking moved to Void Hammer (2026-10-17).** On the author's call (*"have
+  hammer be the networking stuff and remove it from maiz, so that maiz becomes
+  more pure"*), reaching devices (sockets, LAN facts, the multicast lock, the
+  radios) and the sync engine over Palabra (`Network`, `LanSession`,
+  `RnsSession`, the radio bridge) now live in `../VoidHammer/net`, with their
+  design pages ([field network](/concepts/field-network.md),
+  [LAN transport](/concepts/lan-transport.md), [radios](/concepts/radios.md) and
+  [hardware](/hardware/index.md) here are pointers). **No host changes
+  anything**: the names are still `maiz::`, the old headers forward, and
+  `voidmaiz_lan` / `voidmaiz_net` remain as aliases. Verified the same day
+  against Interaction Combinators and Void Hormiga. Void Maiz keeps what
+  networking looks like (below).
 - **[Touch](/concepts/touch.md)** — what a finger changes and what it does not
   (opened 2026-09-13, ahead of Void Hormiga going mobile). The **deferred
   press**: tap, drag and long press are told apart BEFORE a pointer is
@@ -164,7 +163,8 @@ persistence are inherited from Void Core rather than bolted on.
   3DS's two screens, the DS's no-hover discipline, stroke-to-cut-a-wire,
   shake-to-undo. Ends with what it does NOT prove: nobody has touched any of it
   with a finger.
-- **[Networking](/concepts/networking.md)** (stages A and B built 2026-09-18, stage C 2026-09-19):
+- **[Networking](/concepts/networking.md)** (stages A and B built 2026-09-18, stage C 2026-09-19; **the
+  engine and transports moved to Void Hammer 2026-10-17**, the look stays here):
   networking for ANY Void Maiz application, ruled by the author (Q30). **Void
   Maiz owns what networking looks like, Palabra owns what networking is, and the
   application answers one question: may this rune leave this device?**
@@ -201,7 +201,7 @@ persistence are inherited from Void Core rather than bolted on.
   not last-writer-wins). The interaction-net trap: two redexes sharing a wire
   commute in the maths but not as edits. Undo in a session. Wire routes as
   content. 33 numbered edge cases. Questions Q31–Q35.
-- **[The LAN transport, and who owns it](/concepts/lan-transport.md)**
+- **[The LAN transport, and who owns it](/concepts/lan-transport.md)** (**moved to Void Hammer**, 2026-10-17; history below)
   (2026-09-22, answering the author's "i don't know the ownership of these
   things"; **2026-09-24: `RnsSession`**, the same session over Reticulum,
   encrypted, with "allowed" kept by proven identity, and measured across
@@ -213,7 +213,7 @@ persistence are inherited from Void Core rather than bolted on.
   second transport behind the same seam but costs a Java `BroadcastReceiver`,
   `NEARBY_WIFI_DEVICES` and a second discovery protocol, and **Wi-Fi Aware** is
   a hardware gamble. `lan::network_hint` lets the panel say which it is on.
-- **[Radios](/concepts/radios.md)** (2026-10-05, for Void Hormiga's phones):
+- **[Radios](/concepts/radios.md)** (2026-10-05, for Void Hormiga's phones; **moved to Void Hammer** 2026-10-17):
   Bluetooth LE and Wi-Fi Direct as a holiday (`voidmaiz/radio.hpp`: tag,
   advertise, scan, a byte stream; a group), and the bridge that makes them
   Reticulum interfaces (`voidmaiz/rnsradio.hpp`: an LE peer is a pipe, a group a

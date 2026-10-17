@@ -59,6 +59,11 @@ jobs:
           # before — that is the claim, and the step below reports which
           # configuration this run actually exercised.
           git clone --depth 1 https://github.com/migriv24/VoidPalabra.git VoidPalabra || true
+          # OPTIONAL: networking moved to Void Hammer on 2026-10-17 (reaching
+          # devices, the sync engine over Palabra). It has no public repository
+          # yet; until it does, this clone fails and the run builds Void Maiz
+          # without networking, which the report step below says out loud.
+          git clone --depth 1 https://github.com/migriv24/VoidHammer.git VoidHammer || true
 
       # GLFW 3.4 builds BOTH an X11 and a Wayland backend on Linux by default
       # (vendor/glfw/CMakeLists.txt gates them on UNIX;NOT APPLE), so configure
@@ -95,10 +100,14 @@ jobs:
       - name: Report the networking configuration
         shell: bash
         run: |
-          if ls VoidMaiz/build/*voidmaiz_net* VoidMaiz/build/*/*voidmaiz_net* >/dev/null 2>&1; then
-            echo "::notice::voidmaiz_net built — net_smoke runs in this job"
+          # voidmaiz_net is an alias since networking moved to Void Hammer; the
+          # library that proves the engine built is voidhammer_net.
+          if find VoidMaiz/build -name '*voidhammer_net*' \( -name '*.a' -o -name '*.lib' \) | grep -q .; then
+            echo "::notice::voidhammer_net built — net_smoke and the other networking tests run in this job"
+          elif [ ! -d VoidHammer ]; then
+            echo "::warning::Void Hammer not cloned (no public repository yet) — networking is not built or tested in this job"
           else
-            echo "::warning::voidmaiz_net NOT built (Void Palabra absent or without sync.hpp) — networking untested in this job"
+            echo "::warning::voidhammer_net NOT built (Void Palabra absent or without sync.hpp) — networking untested in this job"
           fi
 
       # The suite is entirely headless — no test target links voidmaiz_view.
