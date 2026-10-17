@@ -7600,3 +7600,14 @@ lot): they do, and they share it through this library. Hammer is the second
 client that could justify lifting Hormiga's record list and detail views, CSV
 import and the console (Q39) into Void Maiz, once Hammer has code that needs
 them.
+
+## 2026-10-17 (fourth pass) — 30 to 50 devices: two software rules for this library
+
+Researched in Void Hammer (`VoidHammer:/research/thirty-to-fifty.md`) on the
+author's ask to look closely at 30–50 devices. Two of its findings are this
+library's to build, now in [the field network](/concepts/field-network.md):
+**presence coalesced at the brain** (already listed) and **files as thumbnails,
+originals fetched on demand** (new): ten 3 MB photos a minute pushed to 39
+others is about 160 Mbps, the one load that can saturate a room. Everything
+else in that research (airtime, channels, builds, power) is hardware and stays
+in Void Hammer.

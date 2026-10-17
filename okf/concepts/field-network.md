@@ -96,7 +96,12 @@ What the star does to each kind of traffic:
   coalesce**: one presence batch per tick per recipient, not one message per
   sender. That is the first piece of software the kit asks of the library.
 - **Files** (photos, by hash; Palabra's) go to the brain once and are fetched
-  from it, instead of travelling phone to phone.
+  from it, instead of travelling phone to phone. **At 40 members they must go
+  as thumbnails, with the original fetched when someone opens it** (Palabra's
+  cautious fetch already has the known-but-not-fetched state): ten 3 MB photos
+  a minute pushed to 39 others is about 160 Mbps, the one load that can
+  saturate a room; as thumbnails it is a few Mbps (arithmetic in
+  `VoidHammer:/research/thirty-to-fifty.md`).
 
 Phone-to-phone direct links stay possible on the same Wi-Fi; nothing forbids
 them. They stop being necessary.
@@ -194,6 +199,8 @@ In order:
 
 1. **A discovery seam** with Bonjour and a known address (Q38), so iOS can find
    a brain at all.
+1b. **Thumbnails pushed, originals pulled** for files, and presence coalesced
+   at the brain: the two rules that keep 40 members a light load.
 2. **Android socket binding** to the Wi-Fi network.
 3. **The brain as a host**: a headless application in "room host" mode
    (always-on Session, the sync host of `LanSession` / `RnsSession`, presence
