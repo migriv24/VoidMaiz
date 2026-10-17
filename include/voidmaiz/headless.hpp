@@ -165,7 +165,11 @@ struct HostApp {
      *
      * Two shapes reach this handler, and the asymmetry is the core's, not ours:
      * `save` is called with the WHOLE STATE DOCUMENT as its args string, while
-     * `deploy`/`build`/`preview`/`effect` are called with `{"args":[…]}`. */
+     * `deploy`/`build`/`preview`/`effect` are called with `{"args":[…]}`.
+     *
+     * A custom effect arrives under ITS OWN name, not "effect": `effect open
+     * room.ink` reaches this handler as op == "open" with args
+     * `{"args":["room.ink"]}` (measured by Void Squid, 2026-10-09). */
     Core::EffectHandler effects;
 
     /* The streaming form. When set it is used INSTEAD of `effects` — a host
@@ -292,6 +296,12 @@ struct SessionOptions {
      * stop the dispatch, because a front-end that could silently drop commands
      * would break the "the log is complete" property. */
     std::function<void(std::string_view command)> on_command;
+
+    /* Every record the core logs, IN ADDITION to the journal: a GUI's log
+     * panel. Use this, never `core().set_log_sink`, which has one slot and
+     * would replace the journal's (Void Squid's first cut did, 2026-10-09, and
+     * its journal recorded "opened" and nothing else). */
+    Core::LogSink on_log;
 };
 
 /* ── one session: load, act, save ────────────────────────────────────────────
@@ -385,6 +395,9 @@ public:
      * destructor calls it. */
     void close();
 
+    /* For READS (projection, queries). A GUI that dispatches through
+     * `core().dispatch` skips the transcript hook, the journal's attribution
+     * and the effect gate; every write goes through `dispatch` or `batch`. */
     Core& core();
     const std::string& state_path() const;
     /* The last failure, or "" — set by start(), save() and close(). */

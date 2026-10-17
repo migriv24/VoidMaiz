@@ -20,6 +20,19 @@
 #include <random>
 #include <sstream>
 
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#else
+#include <csignal>
+#include <unistd.h>
+#endif
+
 namespace fs = std::filesystem;
 
 namespace maiz {
@@ -85,7 +98,49 @@ bool spew_atomic(const fs::path& p, const std::string& data, std::string& err) {
  * "is there a lock file?", which stays true after someone else takes it. */
 struct LockClaim {
     std::string actor, kind, token, opened;
+    /* WHERE, so a stale lock can be told from a live one (2026-10-17, asked by
+     * Void Squid: a crashed window left a lock nobody could tell was dead). Two
+     * windows on one machine is the common case, and on one machine "is that
+     * process still running?" has an answer. On another machine it does not,
+     * so a claim from elsewhere is never judged stale. */
+    long long pid = 0;
+    std::string host;
 };
+
+long long this_pid() {
+#ifdef _WIN32
+    return (long long)GetCurrentProcessId();
+#else
+    return (long long)getpid();
+#endif
+}
+
+std::string this_host() {
+#ifdef _WIN32
+    char buf[MAX_COMPUTERNAME_LENGTH + 1] = {};
+    DWORD n = sizeof buf;
+    return GetComputerNameA(buf, &n) ? std::string(buf, n) : std::string();
+#else
+    char buf[256] = {};
+    return gethostname(buf, sizeof buf - 1) == 0 ? std::string(buf) : std::string();
+#endif
+}
+
+/* False only when we KNOW the process is gone. A reused pid reads as alive,
+ * which errs toward asking the person: the safe direction. */
+bool process_alive(long long pid) {
+    if (pid <= 0) return true;
+#ifdef _WIN32
+    HANDLE h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, (DWORD)pid);
+    if (!h) return GetLastError() == ERROR_ACCESS_DENIED; // exists, not ours to open
+    DWORD code = 0;
+    const bool alive = GetExitCodeProcess(h, &code) && code == STILL_ACTIVE;
+    CloseHandle(h);
+    return alive;
+#else
+    return kill((pid_t)pid, 0) == 0 || errno == EPERM;
+#endif
+}
 
 std::string claim_json(const LockClaim& c) {
     cJSON* o = cJSON_CreateObject();
@@ -93,6 +148,8 @@ std::string claim_json(const LockClaim& c) {
     cJSON_AddStringToObject(o, "kind", c.kind.c_str());
     cJSON_AddStringToObject(o, "token", c.token.c_str());
     cJSON_AddStringToObject(o, "opened", c.opened.c_str());
+    if (c.pid > 0) cJSON_AddNumberToObject(o, "pid", (double)c.pid);
+    if (!c.host.empty()) cJSON_AddStringToObject(o, "host", c.host.c_str());
     char* printed = cJSON_PrintUnformatted(o);
     std::string out = printed ? printed : "{}";
     cJSON_free(printed);
@@ -109,7 +166,7 @@ bool read_claim(const fs::path& p, LockClaim& out) {
     if (!ok) return false;
     CJson doc{cJSON_ParseWithLength(text.data(), text.size())};
     if (!doc || !cJSON_IsObject(doc.p)) {
-        out = {text.empty() ? "another session" : text, "human", "", ""};
+        out = {text.empty() ? "another session" : text, "human", "", "", 0, ""};
         return true;
     }
     auto s = [&](const char* k) {
@@ -118,7 +175,10 @@ bool read_claim(const fs::path& p, LockClaim& out) {
                                                      : std::string();
     };
     out = {s("actor"), s("kind").empty() ? "human" : s("kind"), s("token"),
-           s("opened")};
+           s("opened"), 0, ""};
+    const cJSON* pid = cJSON_GetObjectItemCaseSensitive(doc.p, "pid");
+    if (cJSON_IsNumber(const_cast<cJSON*>(pid))) out.pid = (long long)pid->valuedouble;
+    out.host = s("host");
     return true;
 }
 
@@ -208,6 +268,7 @@ struct Session::Impl {
     std::string token;             // our claim on the lock; "" when not locking
     bool lost = false;             // sticky: a Human session took the floor
     std::string preempted_holder;  // the agent WE evicted, if any
+    std::string stale_holder;      // whose dead lock we took over, if any
     std::string err;
 
     /* Is the lock file still carrying OUR token? A filesystem touch on purpose:
@@ -342,7 +403,8 @@ bool Session::start() {
     if (s.opts.lock) {
         const bool we_are_human = s.opts.kind == SessionKind::Human;
         LockClaim mine{s.opts.actor.empty() ? "an unnamed session" : s.opts.actor,
-                       we_are_human ? "human" : "agent", mint_token(), iso_now()};
+                       we_are_human ? "human" : "agent", mint_token(), iso_now(),
+                       this_pid(), this_host()};
 
         /* Exclusive create: the check and the create are ONE operation, so two
          * sessions starting at the same instant cannot both win. */
@@ -356,13 +418,19 @@ bool Session::start() {
 
         if (!got) {
             LockClaim held;
-            if (!read_claim(s.lock, held)) held = {"another session", "human", "", ""};
+            if (!read_claim(s.lock, held)) held = {"another session", "human", "", "", 0, ""};
 
             /* THE PRECEDENCE RULE, entire: a human may take it from an agent.
              * Nothing else preempts anything — two humans collide normally, and
              * an agent never displaces anyone. */
             const bool may_preempt = we_are_human && held.kind == "agent";
-            if (!may_preempt) {
+            /* A claim from THIS machine whose process is gone is no claim: the
+             * window crashed, and asking the person to delete a file to prove
+             * it is the friction the pid exists to remove. */
+            const bool stale = held.pid > 0 && !held.host.empty() &&
+                               held.host == mine.host && !process_alive(held.pid);
+            if (stale) s.stale_holder = held.actor.empty() ? "a closed session" : held.actor;
+            if (!may_preempt && !stale) {
                 s.err = "the state document is held by " +
                         (held.actor.empty() ? std::string("another session")
                                             : held.actor) +
@@ -387,7 +455,7 @@ bool Session::start() {
                 s.err = "cannot take the lock at " + s.lock.string();
                 return false;
             }
-            s.preempted_holder = held.actor;
+            if (!stale) s.preempted_holder = held.actor;
         }
         s.token = mine.token;
         s.locked = true;
@@ -506,9 +574,16 @@ bool Session::start() {
             s.journal_out << "[" << iso_now() << "] INFO session" << who
                           << ": opened " << s.state.string() << "\n";
             s.journal_out.flush();
-            Impl* self = &s;
-            s.core.set_log_sink([self](std::string_view level, std::string_view op,
-                                       std::string_view msg) {
+        } else {
+            s.err = "cannot append to journal " + s.journal.string() +
+                    " (continuing unrecorded)";
+        }
+    }
+    if (s.journal_out.is_open() || s.opts.on_log) {
+        Impl* self = &s;
+        s.core.set_log_sink([self](std::string_view level, std::string_view op,
+                                   std::string_view msg) {
+                if (self->opts.on_log) self->opts.on_log(level, op, msg);
                 if (!self->journal_out) return;
                 const std::string who =
                     self->opts.actor.empty() ? "" : " (" + self->opts.actor + ")";
@@ -520,10 +595,6 @@ bool Session::start() {
                  * it. Headless throughput is command-rate, not log-rate. */
                 self->journal_out.flush();
             });
-        } else {
-            s.err = "cannot append to journal " + s.journal.string() +
-                    " (continuing unrecorded)";
-        }
     }
 
     /* Attribution before anything is dispatched, so the very first command is

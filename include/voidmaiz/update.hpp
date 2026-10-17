@@ -49,6 +49,8 @@
  */
 #pragma once
 
+#include "voidmaiz/http.hpp"
+
 #include <filesystem>
 #include <functional>
 #include <string>
@@ -154,27 +156,13 @@ std::string describe(const Offer&);
 
 // ── the network seam ────────────────────────────────────────────────────────
 
-struct HttpResult {
-    bool ok = false;
-    int status = 0;
-    std::string error;
-};
-/* GET `url`, following redirects, into the file `to`. */
-using Http = std::function<HttpResult(const std::string& url, const fs::path& to)>;
-
-/* The desktop default: the system `curl` (Windows 10 1803+, macOS, Linux),
- * -L for release redirects, a time limit so a hung network is not a hung app. */
-Http curl_http();
-
-/* Android: java.net.HttpURLConnection through JNI. Call from a thread the
- * JavaVM can attach (a worker thread is right: never block the render loop on
- * the network). Empty elsewhere.
- *
- * `user_agent`, when given, is sent as the User-Agent (2026-10-04). Some
- * servers refuse the platform's generic "Dalvik/…" one: OpenStreetMap's tile
- * policy asks every application to identify itself, which is how Void
- * Hormiga's map met this. */
-Http android_http(ANativeActivity* activity, const std::string& user_agent = {});
+/* The seam itself is voidmaiz/http.hpp now (2026-10-17); these names are kept
+ * so a host that wrote maiz::update::android_http still compiles. */
+using maiz::HttpResult;
+using maiz::Http;
+using maiz::curl_http;
+using maiz::android_http;
+using maiz::ios_http;
 
 bool safe_url(const std::string& url); // https://, no quotes or whitespace
 

@@ -26,6 +26,21 @@ struct Camera {
     float zoom = 1.0f;
 };
 
+/* An orbit camera: Camera's 3D sibling (2026-10-17, asked by Void Squid, the
+ * first host whose content is 3D). Six numbers where Camera has three, and the
+ * same discipline: staged during a drag, ONE `config set view.camera3d …` on
+ * release, undo-exempt. The field order and the "yaw pitch dist tx ty tz"
+ * serialisation are Squid's, adopted unchanged so their copy can become ours
+ * with no document migration. The projection (field of view, handedness) is
+ * the view's, exactly as Camera's x,y mean different things to a node canvas
+ * and a map. */
+struct Camera3D {
+    float yaw = 0.6f;   // radians, around +Y
+    float pitch = 0.4f; // radians, above the horizon
+    float dist = 6.0f;  // from the target
+    float tx = 0, ty = 0, tz = 0;
+};
+
 /* Staged drag positions: node name → world top-left, the shape a Move drag
  * stages in and the snap gesture reads (voidmaiz/gesture.hpp). */
 using StagedMap = std::unordered_map<std::string, std::pair<float, float>>;

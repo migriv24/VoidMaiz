@@ -169,6 +169,58 @@ int main() {
         CHECK(m.find("volume", "hit") == nullptr);
     }
 
+    // ── the device: one rule set, a stated difference per device (2026-10-17) ──
+    // Void Hormiga's case: the same script on a phone and a desktop; what is
+    // the same everywhere fires everywhere, and the difference is in the rule.
+    {
+        Script s = allo_parse("device",
+                              "when form \"phone\" -> chips \"collapsed\"\n"
+                              "when platform \"ios\" and surface \"table:data\" -> swipe \"delete\"\n"
+                              "when shown_as \"sheet\" -> compact 1\n"
+                              "when surface -> seen 1\n");
+        CHECK(s.ok());
+
+        Surfaces surfaces;
+        surfaces.begin_frame();
+        surfaces.declare("table:data", "list", Mark::Outline, "screen");
+        surfaces.show("table:data", "volume");
+        surfaces.declare("inspector", "panel", Mark::Outline, "sheet");
+        surfaces.show("inspector", "mute");
+
+        DeviceFacts phone{"ios", "phone"};
+        PredicateRegistry on_phone;
+        register_device_predicates(on_phone, phone, &surfaces);
+        Merged m = merge({allo_eval(s, subjects(), &on_phone)});
+        CHECK(m.value("preset", "chips") == "collapsed"); // a fact about the device: every subject
+        CHECK(m.value("volume", "swipe") == "delete");    // on iOS, and on that surface
+        CHECK(m.find("mute", "swipe") == nullptr);        // on iOS, not on that surface
+        CHECK(m.value("mute", "compact") == "1");         // shown as a sheet
+        CHECK(m.find("volume", "compact") == nullptr);    // shown as a screen
+        CHECK(m.value("volume", "seen") == "1");
+        CHECK(m.find("preset", "seen") == nullptr);       // on no surface this frame
+
+        // the same script, the same surfaces, a desktop: only what is the same everywhere
+        DeviceFacts desk; // "desktop", "desktop"
+        PredicateRegistry on_desk;
+        register_device_predicates(on_desk, desk, &surfaces);
+        Merged d = merge({allo_eval(s, subjects(), &on_desk)});
+        CHECK(d.find("preset", "chips") == nullptr);
+        CHECK(d.find("volume", "swipe") == nullptr);
+        CHECK(d.value("volume", "seen") == "1");
+
+        // the facts are read live: rotate a tablet into a phone-width window
+        desk.form = "phone";
+        Merged r = merge({allo_eval(s, subjects(), &on_desk)});
+        CHECK(r.value("preset", "chips") == "collapsed");
+
+        // no surfaces given: `surface` is silent, not false-for-everyone-and-said
+        PredicateRegistry bare;
+        register_device_predicates(bare, phone);
+        Merged b = merge({allo_eval(s, subjects(), &bare)});
+        CHECK(b.find("volume", "seen") == nullptr);
+        CHECK(b.value("volume", "chips") == "collapsed");
+    }
+
     if (failures == 0) {
         std::cout << "OK - host predicates smoke passed\n";
         return 0;

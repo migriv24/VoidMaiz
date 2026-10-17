@@ -35,6 +35,7 @@
 
 #include "allomone/allomone.hpp"
 #include "voidmaiz/presence.hpp"
+#include "voidmaiz/touch.hpp" // FormFactor
 #include "voidmaiz/usergraph.hpp"
 
 #include <functional>
@@ -161,6 +162,36 @@ void register_user_graph_predicates(allomone::PredicateRegistry& preds,
  * `roster` and `scene` are captured by reference and must outlive `preds`. */
 void register_presence_predicates(allomone::PredicateRegistry& preds, const Roster& roster,
                                   const Scene* scene = nullptr);
+
+/* ── the device, as Allomone sees it (2026-10-17) ──────────────────────────────
+ *
+ *   platform "<p>"     this device is "ios" | "android" | "desktop"
+ *   form "<f>"         this device is a "phone" | "tablet" | "desktop"
+ *   surface "<id>"     this subject is shown on that surface this frame
+ *   surface            …on any surface at all
+ *   shown_as "<form>"  …on a surface declared with that form ("sheet", "screen")
+ *
+ * Asked by Void Hormiga (2026-09-23), with the author's framing: some things
+ * should be the same on every device and some deliberately not, and the
+ * difference belongs in a RULE rather than in each front-end. So:
+ *
+ *     when tag "overdue" -> tint "red"            fires everywhere
+ *     when form "phone" -> chips "collapsed"      a stated difference
+ *     when platform "ios" and surface "table:data" -> swipe "delete"
+ *
+ * `platform` and `form` are facts about the device, the same for every subject:
+ * a rule using only them colours everything or nothing. `surface` and `shown_as`
+ * read the frame's declarations (immediate mode, presence.hpp). Everything is
+ * captured by reference and must outlive `preds`; a host updates `facts` in
+ * place (a window dragged to a narrower width can become "phone"). */
+struct DeviceFacts {
+    std::string platform = "desktop"; // platform_name(Device::platform())
+    std::string form = "desktop";     // "phone" | "tablet" | "desktop" (classify_layout)
+};
+const char* form_factor_name(FormFactor f);
+
+void register_device_predicates(allomone::PredicateRegistry& preds, const DeviceFacts& facts,
+                                const Surfaces* surfaces = nullptr, const Scene* scene = nullptr);
 
 /* "May this rune leave this device?" answered by an Allomone rule:
  *

@@ -1,5 +1,15 @@
 cmake_minimum_required(VERSION 3.20)
 project(voidmaiz CXX C) # C for the vendored cJSON
+# iOS (2026-10-17): the shell and ImGui's Metal backend are Objective-C++.
+if(IOS)
+  enable_language(OBJC OBJCXX)
+endif()
+
+# A host that builds us as a subdirectory (Void Squid, 2026-10-09) sees every
+# add_test we register in ITS ctest, as "Not Run", and our test names collide
+# with the ones a host would naturally choose. Both default ON, as before.
+option(MAIZ_BUILD_TESTS "Build and register Void Maiz's tests" ON)
+option(MAIZ_BUILD_EXAMPLES "Build Void Maiz's example programs" ON)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -16,7 +26,22 @@ if(NOT EXISTS "${VOIDCORE_ROOT}/include/voidcore.h")
   message(FATAL_ERROR "voidcore.h not found under VOIDCORE_ROOT=${VOIDCORE_ROOT}")
 endif()
 
-if(ANDROID)
+# THREE WAYS TO GET A CORE (2026-10-17):
+#  1. A parent already made a `voidcore` target (Void Squid supplies one Core to
+#     both us and Void Jelly, so one process does not carry two copies of one
+#     library's symbols). We use it and look for nothing.
+#  2. A phone (Android, iOS): compiled from source into a static library. There
+#     are no prebuilts for those substrates, and an iOS app links statically.
+#  3. A desktop: the sibling repo's prebuilt shared library.
+set(MAIZ_CORE_STATIC OFF)
+if(TARGET voidcore)
+  set(VOIDCORE_LIBRARY voidcore)
+  get_target_property(_maiz_core_type voidcore TYPE)
+  if(_maiz_core_type STREQUAL "STATIC_LIBRARY")
+    set(MAIZ_CORE_STATIC ON)
+  endif()
+elseif(ANDROID OR IOS)
+  set(MAIZ_CORE_STATIC ON)
   add_library(voidcore_static STATIC
     "${VOIDCORE_ROOT}/vendor/cJSON.c"
     "${VOIDCORE_ROOT}/src/util/ids.c"
@@ -137,11 +162,14 @@ if(ANDROID)
   target_sources(voidmaiz PRIVATE src/input/textinput_android.cpp)
   target_link_libraries(voidmaiz PUBLIC android log)
 endif()
+# The process-wide platform services (voidmaiz/app.hpp's Device, minus the
+# frame loop): ImGui-free, so a headless test can install a fake one.
+target_sources(voidmaiz PRIVATE src/app/device.cpp)
 # VC_DLL: consuming the core as a shared library on Windows (dllimport) —
 # not on Android, where the core is compiled in statically.
 # CJSON_HIDE_SYMBOLS: mirror the core — cJSON stays internal.
 target_compile_definitions(voidmaiz PRIVATE CJSON_HIDE_SYMBOLS)
-if(NOT ANDROID)
+if(NOT MAIZ_CORE_STATIC)
   target_compile_definitions(voidmaiz PUBLIC VC_DLL)
 endif()
 target_link_libraries(voidmaiz PUBLIC "${VOIDCORE_LIBRARY}")
@@ -263,11 +291,23 @@ set(VOIDMAIZ_IMGUI_SOURCES
   vendor/imgui/imgui_tables.cpp
   vendor/imgui/imgui_widgets.cpp
   vendor/imgui/imgui_demo.cpp
-  vendor/imgui/backends/imgui_impl_opengl3.cpp
 )
-if(ANDROID)
+if(IOS)
+  # iOS: Metal, not GL. OpenGL ES has been deprecated on iOS since 12 and
+  # Metal is what the platform is built on; ImGui's Metal backend is vendored
+  # from the same v1.92.1-docking tag as the rest. No platform backend: the iOS
+  # shell (src/shell/shell_ios.mm) feeds ImGui itself, through the touch gate.
   add_library(voidmaiz_imgui STATIC
     ${VOIDMAIZ_IMGUI_SOURCES}
+    vendor/imgui/backends/imgui_impl_metal.mm
+  )
+  target_include_directories(voidmaiz_imgui PUBLIC vendor/imgui vendor/imgui/backends)
+  target_compile_options(voidmaiz_imgui PRIVATE $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>)
+  target_link_libraries(voidmaiz_imgui PUBLIC "-framework Metal" "-framework MetalKit" "-framework QuartzCore")
+elseif(ANDROID)
+  add_library(voidmaiz_imgui STATIC
+    ${VOIDMAIZ_IMGUI_SOURCES}
+    vendor/imgui/backends/imgui_impl_opengl3.cpp
     vendor/imgui/backends/imgui_impl_android.cpp
   )
   target_include_directories(voidmaiz_imgui PUBLIC vendor/imgui vendor/imgui/backends)
@@ -302,6 +342,7 @@ else()
 
   add_library(voidmaiz_imgui STATIC
     ${VOIDMAIZ_IMGUI_SOURCES}
+    vendor/imgui/backends/imgui_impl_opengl3.cpp
     vendor/imgui/backends/imgui_impl_glfw.cpp
   )
   target_include_directories(voidmaiz_imgui PUBLIC vendor/imgui vendor/imgui/backends)
@@ -323,6 +364,7 @@ add_library(voidmaiz_view STATIC
   src/view/face.cpp
   src/view/inspector.cpp
   src/view/mobile.cpp
+  src/view/nav.cpp
   src/view/netview.cpp
   src/view/textinput.cpp
   src/view/updateview.cpp
@@ -334,10 +376,53 @@ if(NOT MSVC)
   target_compile_options(voidmaiz_view PRIVATE -Wall -Wextra)
 endif()
 
+# ── The portable application (okf/concepts/portable-apps.md) ────────────────
+# A host writes ONE maiz::App and the library owns the shell on every platform:
+# a desktop window (with --device to preview a phone, an iPhone included), an
+# Android NativeActivity, an iOS UIKit + Metal app. Before this, every host
+# wrote its own Android shell (Interaction Combinators 234 lines, Void Hormiga
+# 388, mostly the same lines), and iOS would have doubled that in a second
+# language. `voidmaiz_app` is the shell for THIS platform; link it and define
+# maiz::create_app().
+include(cmake/VoidMaizApp.cmake)
+if(IOS)
+  add_library(voidmaiz_app STATIC src/shell/shell_ios.mm src/shell/frame.cpp)
+  target_compile_options(voidmaiz_app PRIVATE $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>)
+  target_link_libraries(voidmaiz_app PUBLIC voidmaiz_view
+    "-framework UIKit" "-framework Metal" "-framework MetalKit" "-framework QuartzCore"
+    "-framework CoreLocation" "-framework PhotosUI" "-framework UniformTypeIdentifiers")
+elseif(ANDROID)
+  add_library(voidmaiz_app STATIC src/shell/shell_android.cpp src/shell/frame.cpp
+    "${ANDROID_NDK}/sources/android/native_app_glue/android_native_app_glue.c")
+  target_include_directories(voidmaiz_app PUBLIC "${ANDROID_NDK}/sources/android/native_app_glue")
+  target_link_libraries(voidmaiz_app PUBLIC voidmaiz_view voidmaiz_lan)
+else()
+  add_library(voidmaiz_app STATIC src/shell/shell_desktop.cpp src/shell/frame.cpp)
+  target_link_libraries(voidmaiz_app PUBLIC voidmaiz_view)
+endif()
+if(NOT MSVC)
+  target_compile_options(voidmaiz_app PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra>)
+endif()
+
 # ── Examples & tests (desktop only — Android hosts them through the app) ────
-if(ANDROID)
+if(ANDROID OR IOS)
+  # The one example that runs on a phone: the same file the desktop preview
+  # runs. Android: libmaiz_portable.so (proves the library's NativeActivity
+  # shell compiles). iOS: an app bundle, built by CI on a macOS runner for the
+  # Simulator (.github/workflows/ci.yml, job `ios`).
+  if(MAIZ_BUILD_EXAMPLES)
+    maiz_add_app(maiz_portable SOURCES examples/portable_app.cpp
+      NAME "Void Maiz" BUNDLE_ID org.voidmaiz.portable VERSION 0.1.0)
+    target_link_libraries(maiz_portable PRIVATE voidmaiz_headless) # its document is a Session
+  endif()
   return()
 endif()
+if(MAIZ_BUILD_EXAMPLES)
+# The portable app on a desktop: `maiz_portable --device iphone-16` previews it
+# as that phone (screen, safe area, edge-swipe back), with the mouse as a finger.
+maiz_add_app(maiz_portable SOURCES examples/portable_app.cpp
+  NAME "Void Maiz" BUNDLE_ID org.voidmaiz.portable VERSION 0.1.0)
+target_link_libraries(maiz_portable PRIVATE voidmaiz_headless) # its document is a Session
 
 add_executable(maiz_hello examples/hello_window.cpp)
 target_link_libraries(maiz_hello PRIVATE voidmaiz voidmaiz_imgui)
@@ -360,6 +445,11 @@ target_link_libraries(maiz_network PRIVATE voidmaiz_view)
 # The Allomone test vehicle: script workbench + tagged playground.
 add_executable(maiz_allomone examples/allomone_playground.cpp)
 target_link_libraries(maiz_allomone PRIVATE voidmaiz_view voidmaiz_allomone)
+endif() # MAIZ_BUILD_EXAMPLES
+
+if(NOT MAIZ_BUILD_TESTS)
+  return()
+endif()
 
 # ── Smoke test (Phase 1 exit: replay a state document and walk its nodes) ────
 enable_testing()

@@ -136,9 +136,11 @@ SurfaceDecl& Surfaces::decl_for(std::string_view id) {
     return decls_.back();
 }
 
-void Surfaces::declare(std::string_view surface_id, std::string_view kind, Mark mark) {
+void Surfaces::declare(std::string_view surface_id, std::string_view kind, Mark mark,
+                       std::string_view form) {
     SurfaceDecl& d = decl_for(surface_id);
     if (!kind.empty()) d.kind = std::string(kind);
+    if (!form.empty()) d.form = std::string(form);
     d.mark = mark;
 }
 
