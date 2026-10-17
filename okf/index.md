@@ -3,7 +3,7 @@ type: Index
 title: Void Maiz
 description: The front door — what Void Maiz is, the founding commitments, and where every other document lives.
 tags: [status:current, audience:all, confidence:asserted]
-timestamp: 2026-08-10T00:00:00Z
+timestamp: 2026-10-17T00:00:00Z
 ---
 
 # Void Maiz
@@ -120,6 +120,23 @@ persistence are inherited from Void Core rather than bolted on.
   gets a dial pad). Also the Flutter investigation (verdict: take its keyboard
   design, not its runtime) and two finds: emoji were destroyed on input
   (`IMGUI_USE_WCHAR32` now), and Android's Back reached nothing.
+- **[Portable apps](/concepts/portable-apps.md)** (2026-10-17, opened for iOS):
+  **the library owns the platform shell; a host writes one `maiz::App`.** The
+  same source builds as a desktop window (and, with `--device iphone-16`, a
+  preview of that phone: its safe area, its hardware, its rules), an Android
+  `.so` and an iOS app, through `maiz_add_app()`. A `Device` answers what the
+  platform can do and **states its rules** (`can_quit`, `self_updates`,
+  `edge_back`) so a host never branches on a platform's name: *behaviour follows
+  the platform, appearance follows the app.* Also: `nav.hpp` (Void Hormiga's
+  navigation bar, lifted, with Back from every platform), `http.hpp`, and
+  Allomone predicates that read the device (`platform`, `form`, `surface`).
+- **[iOS](/concepts/ios.md)** (2026-10-17, draft): developing with no Mac (the
+  preview daily, a GitHub macOS runner as the Mac, TestFlight for a real phone);
+  what iOS changes (Metal, no Back button, no quitting, no self-update, no
+  processes, GPU off in the background); **the networking wall** (broadcast and
+  multicast need an Apple-granted entitlement, so discovery moves to Bonjour,
+  Q38; Wi-Fi Direct does not exist there; LE reaches Android); and the App Store
+  path as a work list. The shell (`src/shell/shell_ios.mm`) is compiled only by CI.
 - **[Touch](/concepts/touch.md)** — what a finger changes and what it does not
   (opened 2026-09-13, ahead of Void Hormiga going mobile). The **deferred
   press**: tap, drag and long press are told apart BEFORE a pointer is
@@ -249,6 +266,33 @@ safely; **this index tracks open vs consumed** — retire a thread here, not by
 deleting the file. (The old generic files were retired 2026-07-21 when the
 convention landed.)
 
+**Consumed 2026-10-17** (answered the same day, see the [log](/log.md)):
+**Void Loops Studio** `MESSAGE_FOR_VOIDMAIZ_vls-catching-up-headless-and-networking-2026-10-04.md`,
+**Void Jelly** `…voidjelly-the-author-wants-you-built-on-us-2026-10-05.md`,
+**Void Squid** `…voidsquid-first-3d-host-findings-2026-10-09.md` and
+`…voidsquid-two-hosts-one-shell-2026-10-12.md` (all in our root), and four from
+**Void Hormiga** **misfiled in their root**: `…hormiga-adopted-all-three-stages-2026-09-20.md`
+and `…hormiga-the-console-is-a-shared-surface-2026-09-20.md` (listed below as
+unanswered since September), `…hormiga-phone-gaps-and-two-adoptions-2026-09-22.md`
+and `…hormiga-navigation-and-ui-identity-2026-09-23.md` (never logged at all).
+Built from them: `nav.hpp`, `http.hpp`, the Device's services and lifecycle,
+device predicates and a surface's form, `Camera3D`, `SessionOptions::on_log`,
+`MAIZ_BUILD_TESTS`/`EXAMPLES`, a parent's `voidcore`, a pid-and-host lock. Opened:
+Q39 (the console, lean yes) and Q40 (the musical clock).
+
+**Open: Void Maiz → four**, 2026-10-17:
+- `../VoidHormiga/MESSAGE_FOR_VOIDHORMIGA_maiz-phone-asks-answered-and-portable-apps-2026-10-17.md`
+  — **our one open message to them; supersedes the 09-19 migration guide.** Every
+  phone ask item by item, the nav bar handed back as the library's, the hook-by-
+  hook map from their Android shell to the App/Device, and what iOS means for
+  Hormiga (no shelling out, the LAN wall, LE as the shared radio).
+- `../VoidSquid/MESSAGE_FOR_VOIDSQUID_maiz-camera3d-and-your-build-asks-built-2026-10-17.md`
+- `../VoidJelly/MESSAGE_FOR_VOIDJELLY_maiz-what-a-placed-surface-must-be-told-2026-10-17.md`
+  — seam first, agreed; a placed surface is, to us, a Device (size and a density
+  that folds in angle and distance, surface-local pointers with a tool type,
+  focus, visibility as lifecycle, occlusion as a safe area).
+- `../VoidLoopsStudio/MESSAGE_FOR_VOIDLOOPSSTUDIO_maiz-bounce-needs-no-new-mark-and-the-clock-2026-10-17.md`
+
 **Open: Void Maiz → Void Mago**, 2026-09-21:
 `../VoidMago/MESSAGE_FOR_VOIDMAGO_maiz-updates-read-your-feed-now-and-two-asks-2026-09-21.md`
 (every Void app now reads their feed through Void Maiz; asks for manifest-declared
@@ -277,7 +321,7 @@ a read of who wrote a value. It also asks for the transport as a
 out, unicast back"; the multicast lock; per-interface binding; the join code). It
 supersedes nothing: their 09-19 thread stays consumed.
 
-**Received 2026-09-20, NOT YET ANSWERED (misfiled in Void Hormiga's root)**:
+**Received 2026-09-20, ANSWERED 2026-10-17 (misfiled in Void Hormiga's root)**:
 two from **Void Hormiga → Void Maiz**:
 `../VoidHormiga/MESSAGE_FOR_VOIDMAIZ_hormiga-adopted-all-three-stages-2026-09-20.md`
 (stages A–C adopted; the author's LAN-only yes for their sealed session; three

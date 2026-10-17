@@ -7428,3 +7428,95 @@ here directly. Two things were this library's:
   screen. 32-bit indices work on GL 3.0 and GLES 3; nothing in this library or
   its known clients assumes 16-bit (`ImDrawIdx` appears nowhere outside the
   vendor tree). Every client recompiles ImGui with it.
+
+## 2026-10-17 — Portable apps and iOS: the shell becomes the library's, and six messages answered
+
+The author opened iOS: *"void maiz for iOS devices … if possible to actually
+begin development on this device … I want it to be as easy as possible for
+other void maiz based applications to easily port their code onto iOS."* And:
+work through the inbound messages.
+
+**The decision under iOS: the library owns the platform shell.** Every host had
+written its own Android shell (Interaction Combinators 234 lines, Void Hormiga
+388, mostly the same lines); iOS done that way is every host writing a second
+shell in Objective-C++ on a machine none of them owns. So a host now writes one
+`maiz::App` (`app.hpp`) against a `maiz::Device` (`device.hpp`) and calls
+`maiz_add_app()` (`cmake/VoidMaizApp.cmake`), and the library supplies the shell
+per platform: `shell_desktop.cpp`, `shell_android.cpp`, `shell_ios.mm`, with one
+frame order shared in `frame.cpp`. The Device states **rules, not just a name**
+(`can_quit`, `self_updates`, `edge_back`), because what differs on iOS is mostly
+rules: no Back button, no quitting, no self-update, no GPU in the background, no
+processes. **Behaviour follows the platform, appearance follows the app.**
+[Portable apps](/concepts/portable-apps.md), [iOS](/concepts/ios.md).
+
+**Built and measured on this machine:**
+- the desktop shell with **`--device`** previews (iPhone SE / 13 mini / 16 /
+  16 Pro Max, iPad 11, Pixel 8, a small Android): the screen in points, the safe
+  area, the island or notch, the home indicator, the phone's rules, the mouse as
+  a finger; plus `--screenshot` and `--input` so an agent can look. The example
+  (`examples/portable_app.cpp`: three screens, a nav bar, stacks, a Session
+  saved on Background) was screenshotted as an iPhone 16 in portrait and
+  landscape, and driven: tap a row, the note opens with a chevron; edge swipe,
+  the screen shades and nothing under the finger is pressed; release, back at
+  the list. The same input on the Android profile leaves the note open, as it
+  must (Android's system owns that gesture). Background → `saved` → foreground,
+  and no Quit drawn on iOS.
+- **the Android shell compiles** (NDK r28, arm64, `libmaiz_portable.so` with
+  `ANativeActivity_onCreate` exported), and MaizActivity's four new methods
+  (open URL, share text, haptics, move to back) dex with the signatures the
+  native side looks up.
+- the suite: 26/26 (the known `reduce_conformance` excluded, as in CI).
+
+**Written, compiled only by CI:** `shell_ios.mm` (UIScene life cycle, MTKView
+and ImGui's Metal backend vendored from the same `v1.92.1-docking` tag the rest
+of ImGui is, byte-checked first; the gate fed UIKit's coalesced samples; a
+UIKeyInput keyboard under the textinput pivot; PHPicker, the document picker,
+the share sheet, haptics, `openURL`, NSURLSession as `ios_http`, CoreLocation),
+the iOS `Info.plist` template and a privacy manifest. The CI `ios` job builds for
+device and Simulator, launches the example in the Simulator, backgrounds it,
+checks its document was written and uploads screenshots. **Not yet run**: the
+push was refused (the token here has no `workflow` scope), so the commit waits
+on the local `ios` branch for the author.
+
+**Found before any iOS build existed:**
+- `update::platform_tag()` answered `macos-arm64` on an iPhone (both Apple on
+  arm64), so the updater would have offered it a Mac release. Now `ios-arm64` /
+  `ios-simulator`, and nothing in `update.cpp` that spawns a process compiles
+  for iOS (`system`/`popen` are unavailable there).
+- **Networking hits a wall on iOS as built**: UDP broadcast and multicast need
+  an entitlement Apple grants on request, and both `LanSession`'s beacon and
+  Reticulum's automatic interface depend on them. Q38 leans to Bonjour behind a
+  discovery seam. Between iPhone and Android, LE is the shared radio; Wi-Fi
+  Direct does not exist on iOS; iOS 26's Wi-Fi Aware is the one to watch.
+
+**Also built, from the messages:**
+- **`voidmaiz/nav.hpp`**: Void Hormiga's navigation bar, app bar and per-
+  destination stacks, lifted as they asked (09-23), with the ant replaced by a
+  face callback, icons optional, the chevron drawn as a path, and **Back
+  gathered from every platform** into `back_pressed()`: Android's key (which the
+  stock ImGui backend does NOT map; `android_system_key` does, answering their
+  "please confirm"), iOS's edge swipe (new in the touch gate), a desktop's
+  Escape. A Back nobody claims gets the platform default.
+- **`voidmaiz/http.hpp`**: the network seam lifted out of `update.hpp`
+  (Hormiga 09-22 #5); `maiz::update::Http` still resolves.
+- **The Device's services** answer Hormiga's 09-22 #3 and #4: open a URL / `tel:`
+  / `mailto:`, share, haptics, lifecycle events. Camera capture, date and time
+  pickers and text selection (#6, #7) are not built.
+- **Device predicates for Allomone** (Hormiga 09-23 Ask 2): `platform`, `form`,
+  `surface`, `shown_as`, and `SurfaceDecl::form`; pinned in
+  `host_predicates_smoke` (one script, a phone and a desktop).
+- **Void Squid's asks** (10-09, 10-12): `Camera3D` with `compile_camera3d` /
+  `parse_camera3d` in their serialisation; `SessionOptions::on_log`, a sink that
+  adds to the journal instead of replacing it, and a line that `Session::core()`
+  is for reads; the `effect <op>` shape documented; `MAIZ_BUILD_TESTS` /
+  `MAIZ_BUILD_EXAMPLES`; a parent-supplied `voidcore` target used as is; and the
+  advisory lock now carries **pid and host**, so a crashed window's lock on the
+  same machine is recognized as stale and taken (pinned in the headless
+  selftest, including that a claim from another host still refuses).
+
+**Messages:** the four in our root (VLS 10-04, Void Jelly 10-05, Void Squid
+10-09 and 10-12) and two **misfiled in Void Hormiga's root and never logged**
+(09-22 phone gaps, 09-23 navigation), plus their two 09-20 messages the index
+had listed as unanswered. All answered; replies listed in the
+[index](/index.md). Q39 (take the console into the library, lean yes: two hosts
+wrote it) and Q40 (VLS's shared musical clock) opened.

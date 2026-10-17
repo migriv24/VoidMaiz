@@ -107,6 +107,16 @@ by default, so configure needs both sets of development headers.
 Void Core must also be built first, as on every platform — desktop links it as a
 prebuilt shared library.
 
+# iOS (2026-10-17)
+
+A fourth target, and the first with no machine in the family that can build it.
+CI's `ios` job (macOS runner) is the only compiler `src/shell/shell_ios.mm` has;
+it builds for an iPhone (arm64, unsigned) and for the Simulator, launches the
+example there, backgrounds it and checks it saved. That will make iOS
+**compiles**, and, by the claim this page keeps apart, **not shipped**: a
+Simulator is not a phone in front of a person. `void.json` does not change until
+someone holds one. See [ios](/concepts/ios.md).
+
 # Status
 
 `measured` (2026-09-08) for *compiles*; `asserted` for nothing. The array stays

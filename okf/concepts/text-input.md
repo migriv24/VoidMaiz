@@ -239,6 +239,18 @@ and in the manifest: `android:name="org.voidmaiz.MaizActivity"`,
 `android:hasCode="true"`, `android:windowSoftInputMode="adjustNothing"`; in the
 APK script: `android/build_java.ps1`, then add `classes.dex`.
 
+# iOS (2026-10-17)
+
+The pivot crossed unchanged. Stage 1 (`shell_ios.mm`) is a hidden `UIKeyInput`
+view that edits a mirror of the field and hands the glue the whole state after
+every edit, as Android's InputConnection does. Accents by long-press and emoji
+arrive as `insertText` and work. What stage 1 cannot do needs `UITextInput`:
+**marked text** (Chinese, Japanese and Korean composition), autocorrect that
+sees the words around the cursor, and the system's cursor and selection handles
+(which would also be Void Hormiga's "copy a phone number out of a note"). That
+is stage 2, and it is the larger half. Compiled only by CI; nobody has typed on
+it. [ios](/concepts/ios.md).
+
 # What this does not prove
 
 **Nobody has typed on a phone with it.** There is no device or emulator image

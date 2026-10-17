@@ -95,6 +95,17 @@ and a CLI say the same words.
   (`android/debug.keystore`, ignored); losing it means every phone must uninstall
   to update. It must be backed up.
 
+# iOS: the client stands down (2026-10-17)
+
+An iOS app may not update itself: the App Store does, and an app that downloads
+new code breaks App Review Guideline 2.5.2. So `Device::self_updates()` is false
+there, `platform_tag()` answers `ios-arm64` (it used to answer `macos-arm64`,
+both being Apple on arm64, which would have offered an iPhone a Mac release),
+and nothing in `update.cpp` that spawns a process is compiled for iOS. A feed
+should carry no iOS artifact. What an iOS host may still do with the feed is
+**tell** a person that a version exists and link to the App Store listing; the
+prompt for that is not built. [ios](/concepts/ios.md).
+
 # Android, stated plainly
 
 The Android half is **compiled** (NDK r28, arm64, no warnings) and **not yet run

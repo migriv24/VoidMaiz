@@ -79,6 +79,15 @@ Sans-thread: `handle()` the radio's events and `pump()` after every
 - `MaizRadio.java` compiles to dex and is in Hormiga's APK. **No device has run
   it.** Wi-Fi Direct has no stand-in; it waits for two Android phones.
 
+# iOS (2026-10-17, not built)
+
+LE has an iOS half to write (CoreBluetooth is a GATT central and peripheral,
+and it talks to Android's). **Wi-Fi Direct has none**: it does not exist on iOS,
+and Apple's own peer-to-peer does not reach Android. iOS 26's **Wi-Fi Aware** is
+the first standard peer-to-peer Wi-Fi on both, not yet confirmed working between
+them when this was written. So between an iPhone and an Android phone, LE is the
+radio today. [ios](/concepts/ios.md) §Networking.
+
 # Boundaries
 
 - **The holiday decides nothing about who.** Tags in, tags out.

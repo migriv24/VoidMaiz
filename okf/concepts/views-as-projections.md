@@ -69,6 +69,18 @@ transcript already is one — making it a first-class panel closes the loop).
 3D/spreadsheet/force-directed: deferred until someone needs them; nothing in the
 contract forbids them.
 
+# Drawing beneath the UI (2026-10-17, Void Squid's finding)
+
+A host whose content is not ImGui (Void Squid's 3D scene, through Void Jelly's
+GL nib) draws it as the window's background: clear, draw the scene into the
+same framebuffer, then render ImGui's draw data on top. Squid found the seam by
+reading `hello_window.cpp` and guessing, so it is named here. Two cautions: the
+renderer is the platform's (GL on desktop, GLES on Android, **Metal on iOS**),
+so a host that draws beneath must draw with that renderer; and macOS's 3.2 core
+context forbids the fixed-function GL a Windows compatibility context accepts.
+For a portable App (portable apps), the shell owns the frame, so drawing
+beneath is a future `App` hook rather than something a host can do today.
+
 # Host-built views: the sanctioned seam (2026-07-16)
 
 Void Hormiga asked (its Territory section wants runes-with-location-facets on
