@@ -12,9 +12,13 @@
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <map>
+#include <mutex>
 #include <stdexcept>
+#include <string_view>
 #include <unordered_map>
+#include <vector>
 
 namespace maiz {
 
@@ -29,6 +33,134 @@ struct CJson {
 const char* gstr(const cJSON* o, const char* key, const char* fallback = "") {
     const cJSON* it = cJSON_GetObjectItemCaseSensitive(const_cast<cJSON*>(o), key);
     return cJSON_IsString(it) ? it->valuestring : fallback;
+}
+
+/* ── ONE MANTLE OUT OF THE WHOLE DOCUMENT, WITHOUT PARSING THE REST ───────────
+ *
+ * (2026-10-24, Void Hormiga issue #2.) Projecting the 10-rune `kinds` mantle of a
+ * 10^5-rune database parsed all 43 MB of state into cJSON first, because the core
+ * exports the document whole. This walks the text instead, recording each
+ * mantle's byte range and name and the `active` member, then hands cJSON only the
+ * mantle that was asked for. A tokenizer that steps over values (strings with
+ * their escapes, nested containers) is a memchr-speed pass; a parse builds a tree
+ * of every value in the file. Anything unexpected returns false, and the caller
+ * parses the whole document as before. */
+class Scan {
+public:
+    explicit Scan(std::string_view t) : t_(t) {}
+    void ws() {
+        while (i_ < t_.size() && (t_[i_] == ' ' || t_[i_] == '\n' || t_[i_] == '\r' || t_[i_] == '\t')) ++i_;
+    }
+    bool eat(char c) {
+        ws();
+        if (i_ >= t_.size() || t_[i_] != c) return false;
+        ++i_;
+        return true;
+    }
+    std::size_t pos() const { return i_; }
+    // a string's raw content (escapes left as written), cursor after the quote
+    bool string(std::string_view& out) {
+        if (!eat('"')) return false;
+        const std::size_t b = i_;
+        for (;;) {
+            const std::size_t q = t_.find('"', i_);
+            if (q == std::string_view::npos) return false;
+            std::size_t k = q;
+            while (k > b && t_[k - 1] == '\\') --k;
+            i_ = q + 1;
+            if ((q - k) % 2 == 0) { out = t_.substr(b, q - b); return true; }
+        }
+    }
+    bool skip() {
+        ws();
+        if (i_ >= t_.size()) return false;
+        std::string_view s;
+        if (t_[i_] == '"') return string(s);
+        if (t_[i_] == '{' || t_[i_] == '[') {
+            int depth = 0;
+            while (i_ < t_.size()) {
+                const char c = t_[i_];
+                if (c == '"') { if (!string(s)) return false; continue; }
+                if (c == '{' || c == '[') ++depth;
+                else if ((c == '}' || c == ']') && --depth == 0) { ++i_; return true; }
+                ++i_;
+            }
+            return false;
+        }
+        while (i_ < t_.size() && !std::strchr(",}] \n\r\t", t_[i_])) ++i_;
+        return true;
+    }
+
+private:
+    std::string_view t_;
+    std::size_t i_ = 0;
+};
+
+/* The byte range of mantle `want` (or of the active one, when `want` is empty,
+ * which is then filled in), straight out of an exported state document.
+ * Found, or ABSENT (the document scanned cleanly and no mantle has that name:
+ * the answer is an empty scene, with no parse at all), or Unsure (anything
+ * unexpected: the caller parses the whole document, as before). */
+enum class Slice { Found, Absent, Unsure };
+Slice slice_mantle(std::string_view state, std::string& want, std::string_view& slice) {
+    Scan s(state);
+    std::vector<std::pair<std::string_view, std::string_view>> mantles; // name, text
+    std::string active;
+    if (!s.eat('{')) return Slice::Unsure;
+    if (s.eat('}')) return Slice::Unsure;
+    constexpr Slice no = Slice::Unsure;
+    for (;;) {
+        std::string_view key;
+        if (!s.string(key) || !s.eat(':')) return no;
+        s.ws();
+        if (key == "mantles") {
+            if (!s.eat('[')) return no;
+            if (!s.eat(']')) {
+                for (;;) {
+                    s.ws();
+                    const std::size_t b = s.pos();
+                    if (!s.eat('{')) return no;
+                    std::string_view name;
+                    if (!s.eat('}')) {
+                        for (;;) {
+                            std::string_view k;
+                            if (!s.string(k) || !s.eat(':')) return no;
+                            s.ws();
+                            if (k == "name") {
+                                if (!s.string(name)) return no; // a name is a string, or this is not ours
+                            } else if (!s.skip()) {
+                                return no;
+                            }
+                            if (s.eat(',')) continue;
+                            if (!s.eat('}')) return no;
+                            break;
+                        }
+                    }
+                    mantles.emplace_back(name, state.substr(b, s.pos() - b));
+                    if (s.eat(',')) continue;
+                    if (!s.eat(']')) return no;
+                    break;
+                }
+            }
+        } else if (key == "active") {
+            const std::size_t b = s.pos();
+            if (!s.skip()) return no;
+            CJson a{cJSON_ParseWithLength(state.data() + b, s.pos() - b)};
+            if (a && cJSON_IsObject(a.p)) active = gstr(a.p, "mantle");
+        } else if (!s.skip()) {
+            return no;
+        }
+        if (s.eat(',')) continue;
+        if (!s.eat('}')) return no;
+        break;
+    }
+    if (want.empty()) want = active;
+    bool escaped = false;
+    for (const auto& [name, text] : mantles) {
+        if (name.find('\\') != std::string_view::npos) { escaped = true; continue; }
+        if (name == want) { slice = text; return Slice::Found; }
+    }
+    return escaped ? Slice::Unsure : Slice::Absent; // an escaped name might be it: cJSON decides
 }
 
 /* {"x":…,"y":…} or [x,y] → position. */
@@ -321,41 +453,172 @@ void ensure_aux_port(SceneNode& node, int index, bool as_output) {
 }
 
 void auto_layout(Scene& scene, const ProjectOptions& opts) {
-    /* Depth = longest directed-wire distance from a source; relaxation with a
-     * node-count bound so cycles terminate. */
-    std::unordered_map<std::string, int> depth;
-    for (const auto& n : scene.nodes) depth[n.name] = 0;
-    const size_t bound = scene.nodes.size();
-    for (size_t pass = 0; pass < bound; ++pass) {
-        bool changed = false;
+    /* Depth = the longest directed-wire distance from a source, which becomes
+     * the column an unplaced node is laid out in.
+     *
+     * O(N + E) ON ANY GRAPH (2026-10-25). This was a relaxation bounded by the
+     * node count: a pass per step of the longest chain on a DAG, and on a graph
+     * with a directed cycle N full passes, because a cycle's depths only stop
+     * growing at the bound. A linked database is cyclic as a matter of course
+     * (two organizations that partner each other, people who know each other):
+     * 5×10^4 runes and 8.5×10^4 links took 330 s here, and the bound put every
+     * node on a cycle in column N, far off the canvas.
+     *
+     * Now: the strongly connected components (Tarjan, iteratively, so a long
+     * chain cannot overflow the stack), each collapsed to one node, which leaves
+     * a DAG; longest paths over it in topological order; every node of a
+     * component takes the component's depth. On a DAG every component is one
+     * node and the depths are exactly the old ones. */
+    const std::size_t n = scene.nodes.size();
+    bool any_unplaced = false;
+    for (const auto& nd : scene.nodes) any_unplaced = any_unplaced || !nd.placed;
+    if (!any_unplaced) return; // depth only places unplaced nodes
+
+    std::unordered_map<std::string_view, std::uint32_t> index;
+    index.reserve(n);
+    for (std::size_t i = 0; i < n; ++i) index.emplace(scene.nodes[i].name, (std::uint32_t)i);
+    std::vector<std::uint32_t> head(n + 1, 0), succ;
+    {
+        std::vector<std::pair<std::uint32_t, std::uint32_t>> arcs;
         for (const auto& w : scene.wires) {
             if (!w.directed) continue;
-            auto f = depth.find(w.from), t = depth.find(w.to);
-            if (f == depth.end() || t == depth.end()) continue;
-            if (f->second + 1 > t->second && (size_t)(f->second + 1) <= bound) {
-                t->second = f->second + 1;
-                changed = true;
-            }
+            const auto f = index.find(w.from), t = index.find(w.to);
+            if (f == index.end() || t == index.end() || f->second == t->second) continue;
+            arcs.emplace_back(f->second, t->second);
         }
-        if (!changed) break;
+        for (const auto& a : arcs) ++head[a.first + 1];
+        for (std::size_t i = 0; i < n; ++i) head[i + 1] += head[i];
+        succ.resize(arcs.size());
+        std::vector<std::uint32_t> fill(head.begin(), head.end() - 1);
+        for (const auto& a : arcs) succ[fill[a.first]++] = a.second;
     }
+
+    // Tarjan: components come out in REVERSE topological order (sinks first)
+    constexpr std::uint32_t kNone = 0xFFFFFFFFu;
+    std::vector<std::uint32_t> idx(n, kNone), low(n, 0), comp(n, kNone), stack, order;
+    std::vector<char> on(n, 0);
+    std::vector<std::pair<std::uint32_t, std::uint32_t>> call; // node, next successor slot
+    std::uint32_t counter = 0, ncomp = 0;
+    for (std::uint32_t root = 0; root < n; ++root) {
+        if (idx[root] != kNone) continue;
+        call.emplace_back(root, head[root]);
+        idx[root] = low[root] = counter++;
+        stack.push_back(root);
+        on[root] = 1;
+        while (!call.empty()) {
+            auto& [v, next] = call.back();
+            if (next < head[v + 1]) {
+                const std::uint32_t u = succ[next++];
+                if (idx[u] == kNone) {
+                    idx[u] = low[u] = counter++;
+                    stack.push_back(u);
+                    on[u] = 1;
+                    call.emplace_back(u, head[u]);
+                } else if (on[u]) {
+                    low[v] = std::min(low[v], idx[u]);
+                }
+                continue;
+            }
+            if (low[v] == idx[v]) {
+                std::uint32_t u;
+                do {
+                    u = stack.back();
+                    stack.pop_back();
+                    on[u] = 0;
+                    comp[u] = ncomp;
+                } while (u != v);
+                ++ncomp;
+            }
+            const std::uint32_t done = v;
+            call.pop_back();
+            if (!call.empty()) low[call.back().first] = std::min(low[call.back().first], low[done]);
+        }
+    }
+
+    // longest paths over the condensation: components in topological order are
+    // ncomp-1 down to 0, so a component's predecessors are all settled first
+    std::vector<std::vector<std::uint32_t>> members(ncomp);
+    for (std::uint32_t v = 0; v < n; ++v) members[comp[v]].push_back(v);
+    std::vector<int> cdepth(ncomp, 0);
+    for (std::uint32_t c = ncomp; c-- > 0;)
+        for (const std::uint32_t v : members[c])
+            for (std::uint32_t e = head[v]; e < head[v + 1]; ++e) {
+                const std::uint32_t d = comp[succ[e]];
+                if (d != c) cdepth[d] = std::max(cdepth[d], cdepth[c] + 1);
+            }
+
     std::map<int, int> rows; // column → next free row (unplaced nodes only)
-    for (auto& n : scene.nodes) {
-        if (n.placed) continue;
-        int col = depth[n.name];
-        int row = rows[col]++;
-        n.x = opts.origin_x + col * opts.col_gap;
-        n.y = opts.origin_y + row * opts.row_gap;
+    for (std::size_t i = 0; i < n; ++i) {
+        SceneNode& nd = scene.nodes[i];
+        if (nd.placed) continue;
+        const int col = cdepth[comp[i]];
+        const int row = rows[col]++;
+        nd.x = opts.origin_x + col * opts.col_gap;
+        nd.y = opts.origin_y + row * opts.row_gap;
     }
+}
+
+/* A 64-bit mix over the text, eight bytes at a step: a projection's identity,
+ * not a secret (nothing adversarial chooses a mantle to collide with another). */
+std::uint64_t mix(std::string_view a, std::uint64_t h) {
+    std::size_t i = 0;
+    for (; i + 8 <= a.size(); i += 8) {
+        std::uint64_t w;
+        std::memcpy(&w, a.data() + i, 8);
+        h = (h ^ w) * 0x9E3779B97F4A7C15ull;
+        h ^= h >> 29;
+    }
+    for (; i < a.size(); ++i) h = (h ^ (unsigned char)a[i]) * 0x100000001B3ull;
+    return (h ^ a.size()) * 0xBF58476D1CE4E5B9ull;
+}
+
+std::uint64_t digest_of(std::string_view name, std::string_view slice, std::string_view glyphs,
+                        const ProjectOptions& o) {
+    char gaps[64];
+    const int n = std::snprintf(gaps, sizeof gaps, "%g %g %g %g", o.col_gap, o.row_gap, o.origin_x, o.origin_y);
+    std::uint64_t h = mix(name, 0xCBF29CE484222325ull);
+    h = mix(slice, h);
+    h = mix(glyphs, h);
+    h = mix(std::string_view(gaps, n > 0 ? (std::size_t)n : 0), h);
+    return h ? h : 1; // 0 means "unknown"
 }
 
 } // namespace
 
+std::uint64_t mantle_digest(std::string_view state_json, std::string_view glyphs_json,
+                            const ProjectOptions& opts) {
+    std::string want = opts.mantle;
+    std::string_view slice;
+    if (slice_mantle(state_json, want, slice) != Slice::Found) return 0;
+    return digest_of(want, slice, glyphs_json, opts);
+}
+
+std::uint64_t mantle_digest(Core& core, const ProjectOptions& opts) {
+    const auto glyphs = core.glyphs_text();
+    const auto state = core.state_text();
+    return mantle_digest(*state, *glyphs, opts);
+}
+
 Scene project_scene(std::string_view state_json, std::string_view glyphs_json,
                     const ProjectOptions& opts) {
     Scene scene;
-    CJson state{cJSON_ParseWithLength(state_json.data(), state_json.size())};
-    if (!state || !cJSON_IsObject(state.p)) return scene;
+    /* The fast path: parse only the mantle asked for (see slice_mantle). The
+     * slow path, the whole document, only when the text is not what it expects. */
+    std::string want = opts.mantle;
+    std::string_view slice;
+    CJson one, state;
+    const cJSON* mantle = nullptr;
+    const Slice found = slice_mantle(state_json, want, slice);
+    if (found == Slice::Absent) return scene; // no such mantle, and nothing parsed to learn it
+    if (found == Slice::Found) {
+        scene.source = digest_of(want, slice, glyphs_json, opts);
+        one.p = cJSON_ParseWithLength(slice.data(), slice.size());
+        if (one && cJSON_IsObject(one.p)) mantle = one.p;
+    }
+    if (!mantle) {
+        state.p = cJSON_ParseWithLength(state_json.data(), state_json.size());
+        if (!state || !cJSON_IsObject(state.p)) return scene;
+    }
 
     /* Glyph registry: name → full descriptor (arbitrary keys preserved). */
     CJson glyphs{glyphs_json.empty()
@@ -370,17 +633,18 @@ Scene project_scene(std::string_view state_json, std::string_view glyphs_json,
         }
     }
 
-    /* Pick the mantle: named, or the active one. */
-    std::string want = opts.mantle;
-    if (want.empty()) {
-        const cJSON* active = cJSON_GetObjectItemCaseSensitive(state.p, "active");
-        want = gstr(active, "mantle");
-    }
-    const cJSON* mantle = nullptr;
-    const cJSON* mantles = cJSON_GetObjectItemCaseSensitive(state.p, "mantles");
-    const cJSON* mt = nullptr;
-    cJSON_ArrayForEach(mt, mantles) {
-        if (want == gstr(mt, "name")) { mantle = mt; break; }
+    /* Pick the mantle: named, or the active one (already done on the fast path). */
+    if (!mantle) {
+        want = opts.mantle;
+        if (want.empty()) {
+            const cJSON* active = cJSON_GetObjectItemCaseSensitive(state.p, "active");
+            want = gstr(active, "mantle");
+        }
+        const cJSON* mantles = cJSON_GetObjectItemCaseSensitive(state.p, "mantles");
+        const cJSON* mt = nullptr;
+        cJSON_ArrayForEach(mt, mantles) {
+            if (want == gstr(mt, "name")) { mantle = mt; break; }
+        }
     }
     if (!mantle) return scene;
     scene.mantle = want;
@@ -446,6 +710,16 @@ Scene project_scene(std::string_view state_json, std::string_view glyphs_json,
      * `validate` reports those, the canvas just doesn't draw them. */
     const cJSON* layout = cJSON_GetObjectItemCaseSensitive(const_cast<cJSON*>(mantle), "layout");
     const cJSON* edges = cJSON_GetObjectItemCaseSensitive(const_cast<cJSON*>(layout), "edges");
+    /* ENDPOINTS BY NAME, IN O(1) (2026-10-24). This loop used to find both ends
+     * of every edge by scanning every node: O(E·N), invisible at a hundred runes
+     * and 10^10 comparisons for a client with 10^5 records and a value edge on
+     * each (Void Hormiga issue #2, which is exactly the shape SPEC §3.7.1
+     * encourages). One map, built once, is O(N + E). On a duplicate name (a
+     * state `validate` reports) the LAST node wins, exactly as the scan's last
+     * assignment did, so no existing projection changes. */
+    std::unordered_map<std::string_view, std::size_t> by_name;
+    by_name.reserve(scene.nodes.size());
+    for (std::size_t k = 0; k < scene.nodes.size(); ++k) by_name[scene.nodes[k].name] = k;
     const cJSON* e = nullptr;
     cJSON_ArrayForEach(e, edges) {
         SceneWire wire;
@@ -460,13 +734,10 @@ Scene project_scene(std::string_view state_json, std::string_view glyphs_json,
         const cJSON* wt = cJSON_GetObjectItemCaseSensitive(const_cast<cJSON*>(e), "weight");
         if (cJSON_IsNumber(wt)) wire.weight = wt->valuedouble;
 
-        SceneNode* from_node = nullptr;
-        SceneNode* to_node = nullptr;
-        for (auto& n : scene.nodes) {
-            if (n.name == wire.from) from_node = &n;
-            if (n.name == wire.to) to_node = &n;
-        }
-        if (!from_node || !to_node) continue; // dangling
+        const auto fi = by_name.find(wire.from), ti = by_name.find(wire.to);
+        if (fi == by_name.end() || ti == by_name.end()) continue; // dangling
+        SceneNode* from_node = &scene.nodes[fi->second];
+        SceneNode* to_node = &scene.nodes[ti->second];
 
         /* SPEC §3.7.1: `to` names a measure rune ⇒ this edge is an ATTRIBUTE
          * ASSERTION and its weight is that attribute's value, not a strength.
@@ -505,9 +776,58 @@ Scene project_scene(std::string_view state_json, std::string_view glyphs_json,
     return scene;
 }
 
+/* THE SMALL ONES ARE REMEMBERED (2026-10-25). A host asks for the same small
+ * mantle — its rules, its settings, a document — from many places between two
+ * edits, and every ask was an export, a scan for the mantle and a parse. Keyed
+ * on Core::revision(), which no two states of any two cores share, a scene asked
+ * twice at one revision is projected once.
+ *
+ * Only the SMALL: a copy of a scene of 10^5 nodes is itself the size of the
+ * database, and holding one here would be a second copy of it in every host.
+ * The big one is the host's to keep — it already holds the scene it is
+ * showing — and the export it is projected from is shared (Core::state_text). */
+namespace {
+constexpr std::size_t kMemoNodes = 5000; // larger scenes are not kept
+constexpr std::size_t kMemoSlots = 16;
+
+struct Memo {
+    std::uint64_t rev = 0;
+    ProjectOptions opts;
+    Scene scene;
+};
+
+bool same_options(const ProjectOptions& a, const ProjectOptions& b) {
+    return a.mantle == b.mantle && a.col_gap == b.col_gap && a.row_gap == b.row_gap &&
+           a.origin_x == b.origin_x && a.origin_y == b.origin_y;
+}
+
+std::mutex g_memo_mu;
+std::vector<Memo> g_memo; // most recently asked last
+} // namespace
+
 Scene project_scene(Core& core, const ProjectOptions& opts) {
-    Result glyphs = core.dispatch("glyphs");
-    return project_scene(core.export_state(), glyphs.data, opts);
+    const std::uint64_t rev = core.revision();
+    {
+        std::lock_guard<std::mutex> g(g_memo_mu);
+        for (auto it = g_memo.begin(); it != g_memo.end(); ++it)
+            if (it->rev == rev && same_options(it->opts, opts)) {
+                std::rotate(it, it + 1, g_memo.end());
+                return g_memo.back().scene;
+            }
+    }
+    const auto glyphs = core.glyphs_text();
+    const auto state = core.state_text();
+    Scene scene = project_scene(*state, *glyphs, opts);
+    if (scene.nodes.size() <= kMemoNodes && core.revision() == rev) {
+        std::lock_guard<std::mutex> g(g_memo_mu);
+        /* A core's old revision never comes back, so what is older goes. With
+         * two live cores that costs the other one its entries: a miss, never a
+         * wrong scene, and the memo stays a few small scenes. */
+        std::erase_if(g_memo, [&](const Memo& m) { return m.rev != rev; });
+        if (g_memo.size() >= kMemoSlots) g_memo.erase(g_memo.begin());
+        g_memo.push_back({rev, opts, scene});
+    }
+    return scene;
 }
 
 std::string value_label(const Scene& scene, const SceneWire& wire) {

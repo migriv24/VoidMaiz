@@ -7428,3 +7428,104 @@ here directly. Two things were this library's:
   screen. 32-bit indices work on GL 3.0 and GLES 3; nothing in this library or
   its known clients assumes 16-bit (`ImDrawIdx` appears nowhere outside the
   vendor tree). Every client recompiles ImGui with it.
+
+## 2026-10-24/25 — the projection at 10^5 runes, and values on edges (from Void Hormiga's issue #2)
+
+Void Hormiga's client runs a database of tens of thousands of runes in one
+mantle. Hormiga measured before changing anything (their
+`okf/concepts/platform/scale.md`) and found four costs that are this library's:
+
+- **The edge loop was O(E·N).** Every edge found both endpoints by scanning every
+  node. At 10^5 runes with a value edge each, the shape SPEC §3.7.1 encourages,
+  that is 10^10 comparisons per projection. One name map makes it O(N+E). On a
+  duplicate name the last node still wins, as the scan's did.
+- **Layout relaxed once per step of the longest chain.** It now takes longest
+  paths in topological order, O(N+E). It returns early when nothing is unplaced.
+  (The first version kept the old relaxation for a graph with a directed cycle;
+  the next entry replaces that too.)
+- **Projecting a small mantle parsed the whole document.** A scanner now finds
+  the requested mantle's byte range and `active` in the export, and cJSON parses
+  only that. It answers Found, Absent (no parse at all) or Unsure (the full parse
+  decides, as before: for example a mantle name written with escapes). The
+  export itself is Void Core's, and a single-mantle export is asked of them.
+- **`Scene::find` was a scan**, called many times a frame by every host. It is
+  indexed now, lazily and rebuilt when the node vector moves or resizes. A host
+  that renames a node in place calls `reindex()`; nothing in the family does.
+
+`tests/project_scale_smoke.cpp` checks the fast paths against the slow ones on
+the same document: a name spelled with escapes forces the full parse, and the
+two projections must agree.
+
+**`measures.hpp`**, asked for in the same issue: `ensure_measure`, `write_value` (an
+upsert through `link --weight`), `read_value`, `values_of`, and `summarise`. That
+last one refuses any statistic the measure's level does not admit:
+- nominal admits count and mode;
+- ordinal adds min, max and median;
+- interval adds the mean;
+- ratio adds the sum.
+
+That is Stevens (1946): a statistic is meaningful exactly when it commutes with
+the scale's permissible transformations. An unstated level reads as nominal.
+Sums and means use compensated summation. `tests/measures_smoke.cpp` runs it
+against a live core.
+
+27 tests before this entry, 28 after, all passing (`reduce_conformance` aside,
+as before).
+
+## 2026-10-25 — 5×10^5 runes: graph analysis, one export per change, and the scans that were quadratic
+
+Void Hormiga built a stress database of 5×10^5 runes and 8.4×10^5 links: real
+organizations from the IRS exempt-organization file (public domain), synthetic
+people (their `tools/datasets/`). They opened it in the real app, sampled the
+main thread's stack until nothing heavy was left, and fixed what they found.
+These were this library's:
+
+- **`voidmaiz/graph.hpp`: graph analysis in C++.** Void Core's graph tools are
+  Python-only and O(V·E), so no C++ host could cluster anything. Contents:
+  - a CSR graph;
+  - components;
+  - PageRank;
+  - Leiden (Traag, Waltman & van Eck 2019), with fast local moving, refinement
+    into well-connected subsets so every community is connected, and
+    aggregation. It is deterministic for a seed;
+  - modularity at a resolution γ;
+  - `hierarchy`, which recurses until every community is below a target size;
+  - NMI.
+
+  Karate club: Q = 0.4188, against a best known 0.4198. On the stress
+  database: 23,609 level-1 clusters, Q = 0.977, 4 s. `tests/graph_smoke.cpp`.
+- **Layout on a cyclic graph.** A cycle made the relaxation run N passes. The
+  stress database's 5×10^4 trial took 330 s to project, and put every node on a
+  cycle in column N. Now the layout uses strongly connected components (Tarjan,
+  iterative so a long chain cannot overflow the stack), condenses them to a DAG,
+  and takes longest paths over that: O(N+E) on any graph, 1.0 s for the same
+  trial. A cycle's members share one column.
+- **One export per change.** `Core::revision()` is unique across every core in
+  a process. It moves on every dispatch except the reads: Void Core's query
+  family (read in its `verbs_query.c`), `history`, and `config get`, which
+  Hormiga's map asks every frame. It also moves on `replace_state`, on `raw()`,
+  and on a `register_glyph` that changes a descriptor. `state_text()` and
+  `glyphs_text()` are cached at the current revision. `project_scene(Core&)`
+  reads them, and remembers scenes of up to 5,000 nodes per revision. The big
+  scene is the host's to keep; holding a copy here would double it. Opening the
+  database went from about six whole-document exports to one.
+- **Re-registering a glyph is a no-op when nothing changed.** It used to move the
+  revision and grow the list `replace_state` replays, on every host refresh.
+  Now there is one entry per glyph, the latest.
+- **`mantle_digest` and `Scene::source`.** These identify what a scene was
+  projected from: a hash of the mantle's text, the glyph list and the layout
+  options. A host compares the two to keep a scene across a change to some
+  other mantle. Hormiga's Antfarm verbs re-projected the data mantle each time
+  (seconds at 5×10^5); now they cost a scan.
+- **`Scene::wires_at(name)`.** The wires touching a node, in O(degree), indexed
+  like `find`. "What is this linked to" asked of every rune was O(N·E), 4×10^11
+  steps for one filter over the stress database.
+
+Measured at 5×10^5, on the laptop the family is built on: load 3.7 s, one export
+1.6 s (296 MB), one projection 7 s. The projection is now the largest cost an
+edit pays on this side of the ABI. Making it incremental needs Void Core's change
+feed (Hormiga's message to them, section 4).
+
+`project_scale_smoke` covers the revision, the shared export, the memo, the
+glyph no-op, the digest and `replace_state`. 29 tests, all passing
+(`reduce_conformance` aside, as before).
