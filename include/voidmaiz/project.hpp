@@ -17,6 +17,7 @@
 #include "voidmaiz/annotate.hpp"
 #include "voidmaiz/scene.hpp"
 
+#include <cstdint>
 #include <functional>
 #include <string>
 #include <string_view>
@@ -41,6 +42,16 @@ Scene project_scene(std::string_view state_json, std::string_view glyphs_json,
 
 /* Convenience form: pulls both documents from a live core. */
 Scene project_scene(Core& core, const ProjectOptions& opts = {});
+
+/* What a projection of this mantle would be projected FROM, as a number: equal
+ * to Scene::source of a scene projected now, without projecting (2026-10-25).
+ * A host compares the two to keep a scene across a change to some OTHER mantle
+ * — at 5×10^5 runes a projection is seconds, a digest is a scan. 0 when the
+ * mantle is absent or its text is not one this layer can slice (a name spelled
+ * with escapes): then project. */
+std::uint64_t mantle_digest(std::string_view state_json, std::string_view glyphs_json,
+                            const ProjectOptions& opts = {});
+std::uint64_t mantle_digest(Core& core, const ProjectOptions& opts = {});
 
 /* Extract one mantle's JSON fragment from an exported state document (empty
  * name = the active mantle). Returns "" when absent. This is the seam between

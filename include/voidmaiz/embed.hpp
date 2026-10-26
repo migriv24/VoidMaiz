@@ -19,6 +19,7 @@
  */
 #pragma once
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
@@ -159,6 +160,36 @@ public:
     /* Serialize the full state document (SPEC §2). */
     std::string export_state() const;
 
+    /* ── WHAT CHANGED, AND THE EXPORT IT IMPLIES (2026-10-25) ─────────────────
+     *
+     * Void Core exports only the WHOLE document, and every projection of a live
+     * core starts with an export. A host projects many mantles between two
+     * edits — the active one, its rules, its documents — and each paid the
+     * whole document: at 5×10^5 runes a 300 MB print and a 300 MB scan, six
+     * times over to open one database (Void Hormiga, measured 2026-10-25).
+     *
+     * revision() changes whenever the state MAY have changed, and is unique
+     * across every Core in the process, so it can key a cache that outlives
+     * this one. It moves on every dispatch except the reads hosts ask between
+     * edits — Void Core's query family (`ls`, `cat`, `get`, `find`, `glyphs`,
+     * `mantles`, `tree`, `where`, `describe`, `axes`, `help`, `version`; its
+     * dispatch/verbs_query.c writes nothing), `history`, and `config get` —
+     * and on replace_state, on a register_glyph that changes a descriptor (the
+     * same one again is a no-op), and on raw(), which hands out the means to
+     * change anything. Which verbs mutate is Core's to say and it does not say
+     * it (asked for), so the list is only of verbs read in Core's own source:
+     * a stale export is a wrong picture, a spare one is only a cost.
+     *
+     * state_text() is export_state() at that revision, kept until the next
+     * change: one export per change, however many projections read it. It is
+     * held, so a host that will not read it again soon can drop_state_text()
+     * — the copy is the size of the file. */
+    std::uint64_t revision() const noexcept;
+    std::shared_ptr<const std::string> state_text() const;
+    void drop_state_text() const;
+    /* The `glyphs` verb's data payload, cached the same way. */
+    std::shared_ptr<const std::string> glyphs_text() const;
+
     /* Register (or override) a glyph from its JSON descriptor. Glyphs are host
      * config, NOT exported state — re-register after every fresh Core. (A Core
      * remembers what was registered through it, so replace_state below can
@@ -203,10 +234,14 @@ public:
     /* The underlying handle, for calls this layer doesn't wrap yet. Never
      * destroy it, and never free strings from it with anything but the escape
      * hatch of voidcore.h itself. */
-    VC_Manager* raw() noexcept { return m_; }
+    VC_Manager* raw() noexcept {
+        touch();
+        return m_;
+    }
 
 private:
     struct Callbacks; // stable-address home for the std::function targets
+    void touch() noexcept; // the state may have changed: a new revision
     VC_Manager* m_ = nullptr;
     std::unique_ptr<Callbacks> cb_;
 };

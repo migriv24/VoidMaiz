@@ -16,8 +16,11 @@
  */
 #pragma once
 
+#include <cstddef>
+#include <cstdint>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace maiz {
@@ -217,12 +220,61 @@ struct Scene {
     std::string mantle;    // which mantle this projects
     std::vector<SceneNode> nodes;
     std::vector<SceneWire> wires;
+    /* What it was projected FROM: mantle_digest (project.hpp) of the mantle's text
+     * and the glyph list, 0 when unknown. Equal digests, equal scenes — so a host
+     * can keep a scene across a change to some other mantle. */
+    std::uint64_t source = 0;
 
+    /* By name, in O(1) after the first call (2026-10-24). This was a scan, and
+     * hosts call it several times a frame — the selection, the inspector, every
+     * wire endpoint a renderer resolves — which made a frame O(N) for a database
+     * of 10^5 runes (Void Hormiga issue #2). The index is built lazily on first
+     * use and rebuilt whenever the node vector has moved or changed size, so a
+     * host that pushes nodes after projection still gets right answers. A host
+     * that RENAMES a node in place must call `reindex()`; nothing in the family
+     * does. On a duplicate name the first node wins, as the scan's did. */
     const SceneNode* find(std::string_view name) const {
-        for (const auto& n : nodes)
-            if (n.name == name) return &n;
-        return nullptr;
+        if (index_base_ != nodes.data() || index_count_ != nodes.size()) reindex();
+        const auto it = index_.find(std::string(name));
+        return it == index_.end() ? nullptr : &nodes[it->second];
     }
+    void reindex() const {
+        index_.clear();
+        index_.reserve(nodes.size());
+        for (std::size_t i = 0; i < nodes.size(); ++i) index_.emplace(nodes[i].name, i);
+        index_base_ = nodes.data();
+        index_count_ = nodes.size();
+    }
+
+    /* The wires touching a node — positions in `wires`, in wire order — in
+     * O(degree) after the first call (2026-10-25). "What is this rune linked
+     * to" was a scan of every wire, so asking it of every rune was O(N·E):
+     * 4×10^11 steps for one filter over Void Hormiga's 5×10^5-rune stress
+     * database. Built and rebuilt like find's index; a wire from a node to
+     * itself is listed once. */
+    const std::vector<std::size_t>& wires_at(std::string_view name) const {
+        if (inc_base_ != wires.data() || inc_count_ != wires.size()) reincidence();
+        static const std::vector<std::size_t> none;
+        const auto it = incidence_.find(std::string(name));
+        return it == incidence_.end() ? none : it->second;
+    }
+    void reincidence() const {
+        incidence_.clear();
+        for (std::size_t i = 0; i < wires.size(); ++i) {
+            incidence_[wires[i].from].push_back(i);
+            if (wires[i].to != wires[i].from) incidence_[wires[i].to].push_back(i);
+        }
+        inc_base_ = wires.data();
+        inc_count_ = wires.size();
+    }
+
+private:
+    mutable std::unordered_map<std::string, std::size_t> index_;
+    mutable const SceneNode* index_base_ = nullptr;
+    mutable std::size_t index_count_ = ~std::size_t(0);
+    mutable std::unordered_map<std::string, std::vector<std::size_t>> incidence_;
+    mutable const SceneWire* inc_base_ = nullptr;
+    mutable std::size_t inc_count_ = ~std::size_t(0);
 };
 
 } // namespace maiz

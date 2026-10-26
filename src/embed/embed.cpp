@@ -6,7 +6,9 @@
 #include "voidcore.h"
 #include "cJSON.h"
 
+#include <atomic>
 #include <stdexcept>
+#include <unordered_map>
 #include <utility>
 
 namespace maiz {
@@ -163,6 +165,11 @@ struct Core::Callbacks {
     LogSink log;
     EffectHandler effect;
     std::vector<std::string> glyphs; // registered descriptors, replayed by replace_state
+    std::unordered_map<std::string, std::size_t> glyph_at; // glyph name → its entry in `glyphs`
+    // revision() and what was exported at it (embed.hpp)
+    std::uint64_t rev = 0;
+    std::uint64_t state_rev = 0, glyphs_rev = 0;
+    std::shared_ptr<const std::string> state, glyph_list;
 
     static void log_thunk(const char* level, const char* op, const char* msg, void* user) {
         auto* cb = static_cast<Callbacks*>(user);
@@ -178,6 +185,79 @@ struct Core::Callbacks {
     }
 };
 
+namespace {
+// one counter for every Core, so a revision names one state of one core
+std::atomic<std::uint64_t> g_revisions{0};
+
+// the listing verbs asked between edits, which change nothing (embed.hpp)
+bool is_listing(std::string_view c) {
+    const auto space = [](char ch) { return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r'; };
+    while (!c.empty() && space(c.front())) c.remove_prefix(1);
+    while (!c.empty() && space(c.back())) c.remove_suffix(1);
+    /* Void Core's query family (dispatch/verbs_query.c: none of its verbs writes),
+     * with any arguments, and `config get`, the read half of a verb that also
+     * writes. `history` lists the undo stacks. Hosts ask these every frame —
+     * Hormiga's map reads its camera with `config get` — and each one used to cost
+     * the next projection a whole export. */
+    const std::string_view verb = c.substr(0, c.find(' '));
+    static constexpr std::string_view reads[] = {"axes", "cat", "describe", "find", "get", "glyphs", "help",
+                                                 "history", "ls", "mantles", "tree", "version", "where"};
+    for (const std::string_view r : reads)
+        if (verb == r) return true;
+    return verb == "config" && c.substr(0, 11) == "config get ";
+}
+
+// a descriptor's "glyph" name, "" when it has none
+std::string glyph_name(const std::string& json) {
+    CJson d{cJSON_Parse(json.c_str())};
+    const cJSON* g = d ? cJSON_GetObjectItemCaseSensitive(d.p, "glyph") : nullptr;
+    return cJSON_IsString(g) ? std::string(g->valuestring) : std::string();
+}
+} // namespace
+
+void Core::touch() noexcept {
+    if (!cb_) return; // moved from
+    cb_->rev = ++g_revisions;
+    cb_->state.reset();
+    cb_->glyph_list.reset();
+}
+
+std::uint64_t Core::revision() const noexcept { return cb_ ? cb_->rev : 0; }
+
+std::shared_ptr<const std::string> Core::state_text() const {
+    if (!cb_) return std::make_shared<const std::string>();
+    if (!cb_->state || cb_->state_rev != cb_->rev) {
+        const std::uint64_t at = cb_->rev;
+        auto text = std::make_shared<const std::string>(export_state());
+        // an effect handler may have changed the state while it was exported
+        if (cb_->rev == at) {
+            cb_->state = text;
+            cb_->state_rev = at;
+        }
+        return text;
+    }
+    return cb_->state;
+}
+
+void Core::drop_state_text() const {
+    if (cb_) cb_->state.reset();
+}
+
+std::shared_ptr<const std::string> Core::glyphs_text() const {
+    if (!cb_) return std::make_shared<const std::string>("[]");
+    if (!cb_->glyph_list || cb_->glyphs_rev != cb_->rev) {
+        const std::uint64_t at = cb_->rev;
+        VcStr raw{vc_dispatch(m_, "glyphs")};
+        auto text = std::make_shared<const std::string>(parse_envelope(raw.p).data);
+        if (cb_->rev == at) {
+            cb_->glyph_list = text;
+            cb_->glyphs_rev = at;
+        }
+        return text;
+    }
+    return cb_->glyph_list;
+}
+
 Core::Core() : Core(std::string_view{}) {}
 
 Core::Core(std::string_view state_json) : cb_(std::make_unique<Callbacks>()) {
@@ -188,6 +268,7 @@ Core::Core(std::string_view state_json) : cb_(std::make_unique<Callbacks>()) {
         m_ = vc_create(owned.c_str());
     }
     if (!m_) throw std::runtime_error("voidmaiz: vc_create failed (allocation)");
+    touch();
 }
 
 Core::~Core() {
@@ -206,14 +287,20 @@ Core& Core::operator=(Core&& other) noexcept {
 }
 
 Result Core::dispatch(std::string_view command) {
+    const bool listing = is_listing(command);
+    if (!listing) touch(); // before, too: an effect handler reads the state mid-dispatch
     std::string owned(command);
     VcStr raw{vc_dispatch(m_, owned.c_str())};
+    if (!listing) touch();
     return parse_envelope(raw.p);
 }
 
 std::string Core::dispatch_raw(std::string_view command) {
+    const bool listing = is_listing(command);
+    if (!listing) touch();
     std::string owned(command);
     VcStr raw{vc_dispatch(m_, owned.c_str())};
+    if (!listing) touch();
     return raw ? std::string(raw.p) : std::string();
 }
 
@@ -223,9 +310,25 @@ std::string Core::export_state() const {
 }
 
 bool Core::register_glyph(std::string_view glyph_json) {
+    /* THE SAME DESCRIPTOR AGAIN IS NOT A CHANGE (2026-10-25). A host re-registers
+     * its glyphs on every refresh (Hormiga's database kinds, on every edit); each
+     * one moved the revision, so the projection after it exported the whole
+     * document again, and each one grew the list replace_state replays. One entry
+     * per glyph now — the latest — and an identical one is a no-op. */
     std::string owned(glyph_json);
+    const std::string name = glyph_name(owned);
+    auto at = name.empty() ? cb_->glyph_at.end() : cb_->glyph_at.find(name);
+    if (at != cb_->glyph_at.end() && cb_->glyphs[at->second] == owned) return true;
     bool ok = vc_register_glyph(m_, owned.c_str()) == 1;
-    if (ok) cb_->glyphs.push_back(std::move(owned));
+    if (ok) {
+        if (at != cb_->glyph_at.end()) {
+            cb_->glyphs[at->second] = std::move(owned);
+        } else {
+            if (!name.empty()) cb_->glyph_at[name] = cb_->glyphs.size();
+            cb_->glyphs.push_back(std::move(owned));
+        }
+    }
+    touch(); // the glyph list, and what a projection keeps of a rune
     return ok;
 }
 
@@ -239,6 +342,7 @@ bool Core::replace_state(std::string_view state_json) {
     for (const auto& g : cb_->glyphs) vc_register_glyph(fresh, g.c_str());
     if (m_) vc_destroy(m_);
     m_ = fresh;
+    touch();
     return true;
 }
 

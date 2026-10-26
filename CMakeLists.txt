@@ -134,6 +134,8 @@ add_subdirectory("${VOIDALLOMONE_ROOT}" voidallomone)
 add_library(voidmaiz STATIC
   src/embed/embed.cpp
   src/project/project.cpp
+  src/project/measures.cpp
+  src/graph/graph.cpp
   src/gesture/gesture.cpp
   src/gesture/wires.cpp
   src/gesture/rules.cpp
@@ -472,6 +474,18 @@ add_test(NAME embed_smoke COMMAND maiz_smoke)
 add_executable(maiz_project_smoke tests/project_smoke.cpp)
 target_link_libraries(maiz_project_smoke PRIVATE voidmaiz)
 add_test(NAME project_smoke COMMAND maiz_project_smoke)
+
+add_executable(maiz_project_scale_smoke tests/project_scale_smoke.cpp)
+target_link_libraries(maiz_project_scale_smoke PRIVATE voidmaiz)
+add_test(NAME project_scale_smoke COMMAND maiz_project_scale_smoke)
+
+add_executable(maiz_measures_smoke tests/measures_smoke.cpp)
+target_link_libraries(maiz_measures_smoke PRIVATE voidmaiz)
+add_test(NAME measures_smoke COMMAND maiz_measures_smoke)
+
+add_executable(maiz_graph_smoke tests/graph_smoke.cpp)
+target_link_libraries(maiz_graph_smoke PRIVATE voidmaiz)
+add_test(NAME graph_smoke COMMAND maiz_graph_smoke)
 
 add_executable(maiz_gesture_smoke tests/gesture_smoke.cpp)
 target_link_libraries(maiz_gesture_smoke PRIVATE voidmaiz)
