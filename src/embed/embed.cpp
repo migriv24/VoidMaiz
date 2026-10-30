@@ -166,6 +166,7 @@ struct Core::Callbacks {
     EffectHandler effect;
     std::vector<std::string> glyphs; // registered descriptors, replayed by replace_state
     std::unordered_map<std::string, std::size_t> glyph_at; // glyph name → its entry in `glyphs`
+    int undo_on = -1, undo_depth = -1; // set through Core, replayed by replace_state; -1: never set
     // revision() and what was exported at it (embed.hpp)
     std::uint64_t rev = 0;
     std::uint64_t state_rev = 0, glyphs_rev = 0;
@@ -195,16 +196,19 @@ bool is_listing(std::string_view c) {
     while (!c.empty() && space(c.front())) c.remove_prefix(1);
     while (!c.empty() && space(c.back())) c.remove_suffix(1);
     /* Void Core's query family (dispatch/verbs_query.c: none of its verbs writes),
-     * with any arguments, and `config get`, the read half of a verb that also
-     * writes. `history` lists the undo stacks. Hosts ask these every frame —
-     * Hormiga's map reads its camera with `config get` — and each one used to cost
-     * the next projection a whole export. */
+     * with any arguments; the read-only verbs of its graph family (verbs_graph.c:
+     * links, values, related, bindings); `history`, which lists the undo stacks;
+     * and `config get`, the read half of a verb that also writes. Hosts ask these
+     * every frame — Hormiga's map reads its camera with `config get` — and each
+     * one used to cost the next projection a whole export. */
     const std::string_view verb = c.substr(0, c.find(' '));
-    static constexpr std::string_view reads[] = {"axes", "cat", "describe", "find", "get", "glyphs", "help",
-                                                 "history", "ls", "mantles", "tree", "version", "where"};
+    static constexpr std::string_view reads[] = {"axes",  "bindings", "cat",     "describe", "find",
+                                                 "get",   "glyphs",   "help",    "history",  "links",
+                                                 "ls",    "mantles",  "related", "tree",     "values",
+                                                 "version", "where"};
     for (const std::string_view r : reads)
         if (verb == r) return true;
-    return verb == "config" && c.substr(0, 11) == "config get ";
+    return verb == "config" && (c == "config" || c.substr(0, 11) == "config get "); // bare: lists every key
 }
 
 // a descriptor's "glyph" name, "" when it has none
@@ -340,10 +344,22 @@ bool Core::replace_state(std::string_view state_json) {
     vc_set_log_sink(fresh, cb_->log ? &Callbacks::log_thunk : nullptr, cb_.get());
     vc_set_effect_handler(fresh, cb_->effect ? &Callbacks::effect_thunk : nullptr, cb_.get());
     for (const auto& g : cb_->glyphs) vc_register_glyph(fresh, g.c_str());
+    if (cb_->undo_on >= 0) vc_set_undo(fresh, cb_->undo_on);
+    if (cb_->undo_depth > 0) vc_set_undo_depth(fresh, cb_->undo_depth);
     if (m_) vc_destroy(m_);
     m_ = fresh;
     touch();
     return true;
+}
+
+void Core::set_undo(bool on) {
+    vc_set_undo(m_, on ? 1 : 0);
+    cb_->undo_on = on ? 1 : 0;
+}
+
+void Core::set_undo_depth(int depth) {
+    vc_set_undo_depth(m_, depth);
+    cb_->undo_depth = depth;
 }
 
 void Core::set_log_sink(LogSink sink) {

@@ -302,6 +302,7 @@ Partition leiden(const Graph& g, const LeidenOptions& opt) {
 Hierarchy hierarchy(const Graph& g, std::uint32_t target, const LeidenOptions& opt, int max_depth) {
     Hierarchy h;
     h.path.assign(g.n, {});
+    if (g.n == 0) return h; // nothing to split (and no first node to seed from)
     // a work item: the nodes of one community, at a depth
     struct Item { std::vector<std::uint32_t> nodes; int depth; };
     std::vector<Item> work;

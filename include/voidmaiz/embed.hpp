@@ -216,6 +216,14 @@ public:
      * Returns false (changing nothing) if the new manager cannot be created. */
     bool replace_state(std::string_view state_json);
 
+    /* Undo recording and its depth (voidcore.h: vc_set_undo, vc_set_undo_depth),
+     * REMEMBERED: replace_state applies them to the new manager, as it does the
+     * glyphs. Set through the raw handle, they were lost at every replace —
+     * found 2026-10-27 when a host's undo budget of 4 frames became Core's
+     * default 200 on its first working set, and a 384 MB cap was hit at 30 edits. */
+    void set_undo(bool on);
+    void set_undo_depth(int depth);
+
     /* Install/replace the log sink; pass {} to remove. */
     void set_log_sink(LogSink sink);
     /* Install/replace the effect handler; pass {} to remove. */
