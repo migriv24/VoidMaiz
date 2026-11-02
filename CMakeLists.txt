@@ -367,7 +367,7 @@ if(IOS)
   # manual reference counting and failed on its __weak references.
   set_source_files_properties(vendor/imgui/backends/imgui_impl_metal.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
   set_target_properties(voidmaiz_imgui PROPERTIES XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC YES)
-  target_link_libraries(voidmaiz_imgui PUBLIC "-framework Metal" "-framework MetalKit" "-framework QuartzCore")
+  target_link_libraries(voidmaiz_imgui PUBLIC "-framework Foundation" "-framework Metal" "-framework MetalKit" "-framework QuartzCore")
 elseif(ANDROID)
   add_library(voidmaiz_imgui STATIC
     ${VOIDMAIZ_IMGUI_SOURCES}
@@ -453,7 +453,12 @@ if(IOS)
   add_library(voidmaiz_app STATIC src/shell/shell_ios.mm src/shell/frame.cpp)
   set_source_files_properties(src/shell/shell_ios.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc) # see voidmaiz_imgui
   set_target_properties(voidmaiz_app PROPERTIES XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC YES)
+  # Foundation and CoreGraphics by name (2026-11-02): with ARC on, the second CI
+  # run compiled and then failed to link NSString, NSURLSession, CGRectGetMaxY...
+  # UIKit does not bring them to the linker; only clang's module autolinking
+  # would, and CMake's Xcode project does not turn it on for these libraries.
   target_link_libraries(voidmaiz_app PUBLIC voidmaiz_view
+    "-framework Foundation" "-framework CoreGraphics"
     "-framework UIKit" "-framework Metal" "-framework MetalKit" "-framework QuartzCore"
     "-framework CoreLocation" "-framework PhotosUI" "-framework UniformTypeIdentifiers")
 elseif(ANDROID)
