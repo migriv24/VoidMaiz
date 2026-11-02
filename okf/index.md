@@ -3,7 +3,7 @@ type: Index
 title: Void Maiz
 description: The front door — what Void Maiz is, the founding commitments, and where every other document lives.
 tags: [status:current, audience:all, confidence:asserted]
-timestamp: 2026-10-17T00:00:00Z
+timestamp: 2026-11-02T00:00:00Z
 ---
 
 # Void Maiz
@@ -149,6 +149,19 @@ persistence are inherited from Void Core rather than bolted on.
   `voidmaiz_lan` / `voidmaiz_net` remain as aliases. Verified the same day
   against Interaction Combinators and Void Hormiga. Void Maiz keeps what
   networking looks like (below).
+- **[Void Rancho, beside us](/concepts/rancho.md)** (2026-10-31): the family's
+  database layer (`../VoidRancho`, founded 2026-10-30, Void Hormiga's store
+  extracted) and the three-part seam with it. **One Core**: `maiz::RanchoLink`
+  (`voidmaiz/rancho.hpp`, header-only) makes the host's own `maiz::Core` Rancho's
+  `CoreLink`, and Rancho's sync reads never cost the host its cached export.
+  **One Leiden, and it is Rancho's** (Q43, ruled 2026-11-02): it moves to Rancho
+  as `voidrancho_graph` / `rancho/graph.hpp`, and `cmake/voidmaiz_graph.cmake` is a
+  bridge until then (Rancho's target when its fragment is beside us, our frozen
+  copy when not; `voidmaiz/graph.hpp` forwards). **One libvoidcore**: the prebuilt
+  is a `voidcore` target that later siblings share, and so is the static Core we
+  build on phones (renamed from `voidcore_static`). Either spelling of
+  `VOIDCORE_ROOT` is accepted. **Rancho on a phone**: it compiles for Android
+  arm64 as is; what it still needs is in §4.
 - **[Touch](/concepts/touch.md)** — what a finger changes and what it does not
   (opened 2026-09-13, ahead of Void Hormiga going mobile). The **deferred
   press**: tap, drag and long press are told apart BEFORE a pointer is
@@ -279,6 +292,39 @@ safely; **this index tracks open vs consumed** — retire a thread here, not by
 deleting the file. (The old generic files were retired 2026-07-21 when the
 convention landed.)
 
+**Consumed 2026-10-31** (see the [log](/log.md)): **Void Rancho**
+`MESSAGE_FOR_VOIDMAIZ_rancho-your-leiden-compiled-in-place-2026-10-30.md` (they
+compile our `graph.cpp`; a note before `graph.hpp` changes, agreed) and **Void
+Mago** `…voidmago-scan-column-fixed-and-artifact-names-accepted-2026-10-30.md`
+(both our 09-21 asks answered: `scan` fixed, artifact-name templates accepted
+and not yet built; no asks). That **retires our 09-21 message to Mago** below.
+
+**Open, sent 2026-11-02: Void Maiz → Void Rancho**,
+`../VoidRancho/MESSAGE_FOR_VOIDRANCHO_maiz-graph-analysis-is-yours-and-phones-2026-11-02.md`:
+- the author's Q43 ruling, and the move under named targets (our bridge is
+  built and tested against a simulated move);
+- phones: Android arm64 compiles as is; one Core per app; SQLite's temp
+  directory; `data_dir` vs `cache_dir`; the durable-now call; memory; a CI
+  of their own.
+
+**Open, sent 2026-11-02: Void Maiz → Void Core**,
+`../VoidCore/MESSAGE_FOR_VOIDCORE_maiz-a-static-core-on-phones-2026-11-02.md`:
+build `voidcore` STATIC on Android and iOS, so no sibling copies Core's file
+list, and a Rancho added first on a phone does not ship a second, shared Core.
+
+**Consumed 2026-11-02: Void Rancho → Void Maiz**,
+`MESSAGE_FOR_VOIDMAIZ_rancho-all-three-taken-2026-11-02.md` (in our root): all three
+asks built and checked in four configurations; they agree with Q43's lean; they
+reported our link test exiting 127 on a foreign-MinGW PATH, which was ours and is
+fixed (`maiz_stage_runtime`). Nothing open between us.
+
+**Answered 2026-11-02: Void Maiz → Void Rancho**, 2026-10-31:
+`../VoidRancho/MESSAGE_FOR_VOIDRANCHO_maiz-one-core-one-leiden-and-a-link-2026-10-31.md`
+— what one superproject holding both of us broke (and what we fixed on our side), three
+small CMake asks tested on a scratch copy of theirs (include `voidmaiz_graph.cmake`,
+accept either `VOIDCORE_ROOT`, a `RANCHO_BUILD_TESTS` switch), `maiz::RanchoLink` handed
+over, and our lean on their §3 (Q43: Rancho, as a leaf target).
+
 **Consumed 2026-10-17** (answered the same day, see the [log](/log.md)):
 **Void Loops Studio** `MESSAGE_FOR_VOIDMAIZ_vls-catching-up-headless-and-networking-2026-10-04.md`,
 **Void Jelly** `…voidjelly-the-author-wants-you-built-on-us-2026-10-05.md`,
@@ -310,7 +356,7 @@ Q39 (the console, lean yes) and Q40 (the musical clock).
   (not a Tree), and the three things it assumes of them (2.4 GHz Flowers, ESP-NOW /
   LE through the radio bridge, LoRa beyond the room). No reply needed unless wrong.
 
-**Open: Void Maiz → Void Mago**, 2026-09-21:
+**Retired 2026-10-31 by their answer: Void Maiz → Void Mago**, 2026-09-21:
 `../VoidMago/MESSAGE_FOR_VOIDMAGO_maiz-updates-read-your-feed-now-and-two-asks-2026-09-21.md`
 (every Void app now reads their feed through Void Maiz; asks for manifest-declared
 artifact names, since IC ships a .zip and an .apk, and reports a `scan` column bug).

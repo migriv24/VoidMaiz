@@ -7764,3 +7764,161 @@ feed (Hormiga's message to them, section 4).
 `project_scale_smoke` covers the revision, the shared export, the memo, the
 glyph no-op, the digest and `replace_state`. 29 tests, all passing
 (`reduce_conformance` aside, as before).
+
+## 2026-10-31 — Void Rancho beside us: one Core, one Leiden, and the link
+
+Two messages arrived dated 2026-10-30. **Void Rancho**, the family's new database layer,
+compiles our `src/graph/graph.cpp` in place for clustering and asked for a note before
+`graph.hpp` changes. **Void Mago** answered our 09-21 asks: the `scan` column is fixed, and
+manifest-declared artifact names are accepted but not built (IC's second-writer workaround
+stays until they are). Nothing to build for Mago.
+
+The author asked us to adjust to Rancho **before** Void Hormiga does, since Hormiga is its
+first client. So we built Rancho (8/8), and then built the build Hormiga will be: one
+superproject adding both of us. Three defects, all invisible until the two of us met in one
+CMake tree:
+
+- **We could not configure together.** `VOIDCORE_ROOT` names Core's `core/` for us and Squid,
+  and the repository for Rancho. It is one cache variable, and both checks ran before looking
+  for a parent's `voidcore`. We now accept both spellings (a directory-local shadow) and skip
+  the check when `voidcore` exists.
+- **Two libvoidcore.dll in one process.** We linked the prebuilt Core as a bare path, which
+  `if(NOT TARGET voidcore)` cannot see, so Rancho (like Jelly before it) built a second one
+  from source with the same name. **The prebuilt is now `voidcore`, `SHARED IMPORTED GLOBAL`**:
+  Void Squid's 10-09 fix, made the library's. Measured in both add orders: one Core.
+- **`graph.cpp` in two archives.** `maiz::graph::leiden` was `T` in both `libvoidmaiz.a` and
+  `libvoidrancho.a`. It linked, because the first copy wins, which is an ODR violation that
+  happens to be harmless. **`voidmaiz_graph`** is now its own target, defined once per build by
+  `cmake/voidmaiz_graph.cmake` behind `if(NOT TARGET ...)`. `voidmaiz` links it PUBLIC (no host
+  change), and `graph_smoke` links it alone, so "depends on nothing" is a linker fact.
+
+And one piece of code Rancho had left to every host: **`voidmaiz/rancho.hpp`, `maiz::RanchoLink`**,
+the `CoreLink` over a `maiz::Core`. It is header-only, with no target, and we never link
+Rancho. `export_state` is `*state_text()`, so a full sync shares the projection's export. Our
+`revision()` does not move on Rancho's sync reads (`cat`, `links`, bare `config`), so a sync
+never costs the host its cached export. `tests/rancho_link_smoke.cpp` pins both, plus the
+round trip into the host's own Core, a behind-the-back edit caught by a full sync, and
+clustering through the store. It is opt-in (`-DMAIZ_WITH_RANCHO=ON`) until Rancho has a
+`RANCHO_BUILD_TESTS` switch. It also fixes `embed.hpp`'s comment, which had not listed the
+graph-family reads that the code already treated as reads.
+
+Rancho's §3 (where graph analysis lives) is **Q43**, with the lean *Rancho, as a leaf target
+with no SQLite or Core, our header forwarding*. No Void Maiz code calls `graph.hpp`; only its
+test does. Every proposed change on their side was tested on a scratch copy of their
+CMakeLists first, in both add orders. New page: [Void Rancho, beside us](/concepts/rancho.md).
+
+Checked against the hosts: Interaction Combinators builds. Void Hormiga's tests pass apart
+from the known one, but its `HEAD` does not compile on its own (`app.cpp` against
+`save_writer.hpp`, a half-landed refactor of theirs, unrelated to this change).
+
+30 tests by default (`reduce_conformance` aside, as before: Core's cases 24–25, boxes and
+`patch`, are not implemented here). 31 with Rancho beside us.
+
+## 2026-11-02 — Void Rancho took all three; the link test runs by default
+
+Rancho answered (`MESSAGE_FOR_VOIDMAIZ_rancho-all-three-taken-2026-11-02.md`). All three asks
+are in their CMake, checked in four configurations (both add orders, both root spellings).
+Two of them improve on what we asked for. They use a parent's `voidmaiz_graph` without
+reading `VOIDMAIZ_ROOT`, and `RANCHO_BUILD_TESTS` is on only when Rancho is the top-level
+project, so no host has to set it. They added `related` and `bindings` to their read list,
+named `maiz::RanchoLink` in their `core.hpp`, and agree with Q43's lean and both of its
+conditions.
+
+What we built in reply:
+
+- **The shim is gone.** `MAIZ_WITH_RANCHO` no longer shadows `VOIDCORE_ROOT` for their
+  directory.
+- **`rancho_link_smoke` is in the default suite.** `MAIZ_WITH_RANCHO` is now on by default when
+  we are the top-level project and Rancho is cloned beside us, which mirrors their switch. It
+  is never on when we are a subdirectory: the host adds Rancho itself, and two
+  `add_subdirectory` calls on one repository collide. A parent that added Rancho before us
+  still gets the test.
+- **A defect they found, which was ours.** On a shell with Git's `mingw64/bin` ahead of
+  `ucrt64/bin`, the link test exited 127 before `main`. The toolchain runtime and the Core DLL
+  were staged beside `maiz_smoke` only, so a test built alone, or one in another `bin/`, had
+  neither. And the Core was copied from `VOIDCORE_DLL`, which is never set when a parent (or
+  Rancho, added first) supplies `voidcore`, so in that order nothing was staged at all.
+  **`maiz_stage_runtime(<target>)`** now stages `$<TARGET_FILE:voidcore>` (whichever Core the
+  build has) and the MinGW runtime beside any test it is applied to. It is applied to
+  `maiz_smoke` and `rancho_link_smoke`. Reproduced on a solo build with the foreign MinGW first
+  on PATH: exit 127 with the runtime removed, exit 0 with it staged.
+
+Re-measured in a scratch superproject against the real Rancho, with our tests on, in both
+orders. Each order has one `libvoidmaiz_graph.a` defining `leiden` and no Rancho tests in the
+parent. Rancho-first builds and passes the link test with the foreign MinGW on PATH; Maiz-first
+correctly has no link test, because Rancho does not exist yet when we configure.
+
+31 tests by default with Rancho beside us (`reduce_conformance` aside, as before), and 30
+without it.
+
+## 2026-11-02 (later) — Graph analysis is Rancho's; Rancho is asked to get ready for phones; the iOS shell's first CI run
+
+The author ruled Q43: *"graph analysis code should live in void rancho. and also void rancho
+should ready itself to work for ios and android as well (of course, i don't see this as
+needing to be difficult). Then we should be able to get to a point where it lives on main,
+and our other clients should be able to handle things."*
+
+**The move is Rancho's to make; ours is a bridge** ([Void Rancho, beside us](/concepts/rancho.md) §2).
+No Void Maiz library code calls `maiz::graph`. Its callers are Rancho, Hormiga's store (moving
+to Rancho) with its `stressgen`, and our tests. We proposed the names: `rancho/graph.hpp`,
+namespace `rancho::graph`, a leaf target `voidrancho_graph` (no SQLite, no Core), and a guarded
+`cmake/voidrancho_graph.cmake`.
+
+`cmake/voidmaiz_graph.cmake` now switches by itself:
+- **When that fragment or target exists:** `voidmaiz_graph` is an INTERFACE target over it with
+  `VOIDMAIZ_GRAPH_IS_RANCHO=1`, and `voidmaiz/graph.hpp` forwards (`namespace graph =
+  ::rancho::graph`).
+- **Otherwise:** it compiles our copy, now frozen, which our public CI still needs because
+  Rancho is not on GitHub.
+
+`VOIDRANCHO_ROOT` is now defined before the fragment is included. `rancho_link_smoke` checks
+for `leiden` in the cluster settings, not for whose header was named.
+
+**Tested against a simulated move:** Rancho's tree copied to a scratch folder and changed as
+proposed; their repo untouched.
+- Their 8 tests pass.
+- Void Maiz on its own runs `graph_smoke` and `rancho_link_smoke` on `voidrancho_graph`.
+- A superproject holds one `libvoidrancho_graph.a`, with `graph::leiden` defined there alone,
+  in both add orders, and the app runs.
+- Against the real, unmoved Rancho, nothing changes: the frozen copy, and the default suite as
+  before.
+
+**Phones.**
+- **Measured (NDK r28.2, arm64, API 26):** Rancho compiles and links unchanged, the library and
+  all 8 tests. Not run; there is no device.
+- **The real gap was two Cores.** Our phone build compiles Core static as `voidcore_static`, which
+  Rancho's `if(NOT TARGET voidcore)` could not see, so it built Core's shared library beside it.
+  **Renamed to `voidcore`** (`voidcore_static` stays as an alias; no sibling spelled it).
+  - Maiz-first on Android: one static `libvoidcore.a` inside the app's `.so`.
+  - Rancho-first still yields Core's shared `.so`, because Core's CMake knows no static build.
+    Asked Core for one:
+    `../VoidCore/MESSAGE_FOR_VOIDCORE_maiz-a-static-core-on-phones-2026-11-02.md`.
+- **SQLite's temp files** (`temp_store=FILE`) have no writable default directory in an Android
+  app. Inside a `maiz::App` our shell already sets `TMPDIR` (since 2026-09-25), so only hosts
+  without the shell are exposed.
+- The rest went to Rancho as asks:
+  `../VoidRancho/MESSAGE_FOR_VOIDRANCHO_maiz-graph-analysis-is-yours-and-phones-2026-11-02.md`.
+  - `data_dir` vs `cache_dir`;
+  - the one call that makes a working set durable on `AppEvent::Background`;
+  - `phys_footprint` and a `release_memory()`;
+  - a CI of their own with iOS and Android compiles.
+
+**The iOS shell's first CI run (2026-10-30) was red at the device build** ([iOS](/concepts/ios.md)).
+All six errors had one cause: `shell_ios.mm` was compiled with manual reference counting.
+`$<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>` never reached clang under the Xcode generator for the
+static libraries. ARC is now set per `.mm` file (`COMPILE_OPTIONS`) and as
+`XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC` on `voidmaiz_app` and `voidmaiz_imgui`. `main`'s Windows
+leg was red on `radio_loopback.cpp` (MSVC's `min`/`max` macros); that file left with networking
+on `ios`, whose Windows leg is green.
+
+**Clients, rebuilt against this tree (2026-11-02),** all on the frozen graph copy because
+Rancho has not moved yet:
+- **Built:** Interaction Combinators and NodeBlocks.
+- **Built, with only the known `reduce_conformance` failing:** Void Chisme (42/43), Void Squid
+  (44 of its own pass; the "Not Run" rows are ours and Jelly's, unbuilt there) and Void
+  Verguenza (37/38).
+- **Void Hormiga** fails only in its own `app.cpp` (`SaveWriter::set_storage` and `Job`
+  members its `save_writer.hpp` lacks at 083bf4f, as on 10-31). Its suite is 64/65.
+- Void Maiz for Android arm64 builds whole: `libmaiz_portable.so` with one static
+  `libvoidcore.a`.
+- Our own suite: 31 tests, `reduce_conformance` aside.

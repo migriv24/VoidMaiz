@@ -22,7 +22,19 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(VOIDCORE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../VoidCore/core" CACHE PATH
     "Path to Void Core's core/ directory (include/voidcore.h + build/)")
 
-if(NOT EXISTS "${VOIDCORE_ROOT}/include/voidcore.h")
+# EITHER SPELLING OF THE ROOT (2026-10-31). The family disagrees about what
+# VOIDCORE_ROOT names: we and Void Squid mean Core's `core/` directory, Void
+# Rancho means the repository. It is one cache variable, so in a superproject
+# that adds both (Void Hormiga, once it moves its store to Rancho) the first
+# definition wins and the other sibling's check fails before it can look for a
+# parent's `voidcore` target. We accept both, as a normal variable that shadows
+# the cache in this directory only, so nobody else's reading changes.
+if(NOT EXISTS "${VOIDCORE_ROOT}/include/voidcore.h"
+   AND EXISTS "${VOIDCORE_ROOT}/core/include/voidcore.h")
+  set(VOIDCORE_ROOT "${VOIDCORE_ROOT}/core")
+endif()
+# A parent's `voidcore` target answers the question this check asks.
+if(NOT TARGET voidcore AND NOT EXISTS "${VOIDCORE_ROOT}/include/voidcore.h")
   message(FATAL_ERROR "voidcore.h not found under VOIDCORE_ROOT=${VOIDCORE_ROOT}")
 endif()
 
@@ -41,8 +53,12 @@ if(TARGET voidcore)
     set(MAIZ_CORE_STATIC ON)
   endif()
 elseif(ANDROID OR IOS)
+  # Named `voidcore` (2026-11-02), as on desktop: a sibling added after us (Void
+  # Rancho) checks `if(NOT TARGET voidcore)` before building its own, and under
+  # the old name voidcore_static it could not see this one, so a phone app got
+  # two Cores. voidcore_static stays as an alias for anything that spelled it.
   set(MAIZ_CORE_STATIC ON)
-  add_library(voidcore_static STATIC
+  add_library(voidcore STATIC
     "${VOIDCORE_ROOT}/vendor/cJSON.c"
     "${VOIDCORE_ROOT}/src/util/ids.c"
     "${VOIDCORE_ROOT}/src/util/log.c"
@@ -74,11 +90,12 @@ elseif(ANDROID OR IOS)
     "${VOIDCORE_ROOT}/src/scripts/vs_expr.c"
     "${VOIDCORE_ROOT}/src/vc_manager.c"
   )
-  target_include_directories(voidcore_static
+  target_include_directories(voidcore
     PUBLIC  "${VOIDCORE_ROOT}/include"
     PRIVATE "${VOIDCORE_ROOT}/src" "${VOIDCORE_ROOT}/vendor")
-  target_compile_definitions(voidcore_static PRIVATE CJSON_HIDE_SYMBOLS)
-  set(VOIDCORE_LIBRARY voidcore_static)
+  target_compile_definitions(voidcore PRIVATE CJSON_HIDE_SYMBOLS)
+  add_library(voidcore_static ALIAS voidcore)
+  set(VOIDCORE_LIBRARY voidcore)
 else()
   # A MULTI-CONFIG GENERATOR PUTS IT ONE FOLDER DEEPER (2026-09-20). Visual
   # Studio builds into build/Release and build/bin/Release, so a host configured
@@ -99,6 +116,29 @@ else()
           "${VOIDCORE_ROOT}/build/bin/Release" "${VOIDCORE_ROOT}/build/Release"
           "${VOIDCORE_ROOT}/build/bin/Debug" "${VOIDCORE_ROOT}/build/Debug"
     NO_DEFAULT_PATH)
+
+  # THE PREBUILT IS A TARGET, SO A LATER SIBLING SHARES IT (2026-10-31). Linked
+  # as a bare file path, it was invisible to `if(TARGET voidcore)`: a sibling
+  # added after us with that guard (Void Jelly, Void Rancho) then built a SECOND
+  # libvoidcore from source, with the same file name, and the process loaded
+  # whichever the loader met first. Void Squid fixed it for itself by wrapping
+  # the file before adding us; this does the same for every host. One process,
+  # one Core.
+  if(WIN32 AND VOIDCORE_DLL)
+    add_library(voidcore SHARED IMPORTED GLOBAL)
+    set_target_properties(voidcore PROPERTIES
+      IMPORTED_LOCATION "${VOIDCORE_DLL}"
+      IMPORTED_IMPLIB   "${VOIDCORE_LIBRARY}")
+  elseif(NOT WIN32)
+    add_library(voidcore SHARED IMPORTED GLOBAL)
+    set_target_properties(voidcore PROPERTIES IMPORTED_LOCATION "${VOIDCORE_LIBRARY}")
+  endif()
+  if(TARGET voidcore)
+    set_target_properties(voidcore PROPERTIES
+      INTERFACE_INCLUDE_DIRECTORIES "${VOIDCORE_ROOT}/include"
+      INTERFACE_COMPILE_DEFINITIONS VC_DLL)
+    set(VOIDCORE_LIBRARY voidcore)
+  endif()
 endif()
 
 # ── Void Allomone (the language and the merge) ───────────────────────────────
@@ -135,7 +175,6 @@ add_library(voidmaiz STATIC
   src/embed/embed.cpp
   src/project/project.cpp
   src/project/measures.cpp
-  src/graph/graph.cpp
   src/gesture/gesture.cpp
   src/gesture/wires.cpp
   src/gesture/rules.cpp
@@ -157,6 +196,12 @@ target_include_directories(voidmaiz
   PRIVATE vendor
 )
 target_link_libraries(voidmaiz PUBLIC voidallomone)
+# Graph analysis is Void Rancho's (Q43, 2026-11-02); cmake/voidmaiz_graph.cmake
+# bridges to Rancho's leaf target when Rancho is beside us, and to our frozen
+# copy when it is not. VOIDRANCHO_ROOT is read there, so it is defined here.
+set(VOIDRANCHO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../VoidRancho" CACHE PATH "Path to the Void Rancho repo")
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/voidmaiz_graph.cmake")
+target_link_libraries(voidmaiz PUBLIC voidmaiz_graph)
 # The keyboard holiday's Android crossing (okf/concepts/text-input.md): JNI to
 # org.voidmaiz.MaizActivity. UI-free, so it lives here and not in the view.
 if(ANDROID)
@@ -316,7 +361,12 @@ if(IOS)
     vendor/imgui/backends/imgui_impl_metal.mm
   )
   target_include_directories(voidmaiz_imgui PUBLIC vendor/imgui vendor/imgui/backends)
-  target_compile_options(voidmaiz_imgui PRIVATE $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>)
+  # ARC on the FILE, and as the Xcode setting (2026-11-02). The language-keyed
+  # $<COMPILE_LANGUAGE:OBJCXX> option never reached clang under the Xcode
+  # generator: CI's first iOS build (2026-10-30) compiled shell_ios.mm with
+  # manual reference counting and failed on its __weak references.
+  set_source_files_properties(vendor/imgui/backends/imgui_impl_metal.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
+  set_target_properties(voidmaiz_imgui PROPERTIES XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC YES)
   target_link_libraries(voidmaiz_imgui PUBLIC "-framework Metal" "-framework MetalKit" "-framework QuartzCore")
 elseif(ANDROID)
   add_library(voidmaiz_imgui STATIC
@@ -401,7 +451,8 @@ endif()
 include(cmake/VoidMaizApp.cmake)
 if(IOS)
   add_library(voidmaiz_app STATIC src/shell/shell_ios.mm src/shell/frame.cpp)
-  target_compile_options(voidmaiz_app PRIVATE $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>)
+  set_source_files_properties(src/shell/shell_ios.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc) # see voidmaiz_imgui
+  set_target_properties(voidmaiz_app PROPERTIES XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC YES)
   target_link_libraries(voidmaiz_app PUBLIC voidmaiz_view
     "-framework UIKit" "-framework Metal" "-framework MetalKit" "-framework QuartzCore"
     "-framework CoreLocation" "-framework PhotosUI" "-framework UniformTypeIdentifiers")
@@ -467,6 +518,44 @@ endif()
 
 # ── Smoke test (Phase 1 exit: replay a state document and walk its nodes) ────
 enable_testing()
+
+# maiz_stage_runtime(<target>): what a test binary needs beside it to START.
+# Void Core's shared library (the `voidcore` target, whichever project supplied
+# it: our imported prebuilt, a parent's, or Void Rancho's source build) and, on
+# MinGW, the toolchain runtime the binary was built against (see "the toolchain
+# runtime" below for why the directory search must win).
+set(_maiz_runtime_dlls "")
+if(WIN32 AND CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+  get_filename_component(_maiz_toolchain_bin "${CMAKE_CXX_COMPILER}" DIRECTORY)
+  foreach(_dll libstdc++-6.dll libgcc_s_seh-1.dll libgcc_s_dw2-1.dll libwinpthread-1.dll)
+    if(EXISTS "${_maiz_toolchain_bin}/${_dll}")
+      list(APPEND _maiz_runtime_dlls "${_maiz_toolchain_bin}/${_dll}")
+    endif()
+  endforeach()
+endif()
+function(maiz_stage_runtime target)
+  if(NOT WIN32)
+    return()
+  endif()
+  if(TARGET voidcore)
+    get_target_property(_type voidcore TYPE)
+    if(_type STREQUAL "SHARED_LIBRARY")
+      add_custom_command(TARGET ${target} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "$<TARGET_FILE:voidcore>" "$<TARGET_FILE_DIR:${target}>")
+    endif()
+  elseif(VOIDCORE_DLL)
+    add_custom_command(TARGET ${target} POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+              "${VOIDCORE_DLL}" "$<TARGET_FILE_DIR:${target}>")
+  endif()
+  if(_maiz_runtime_dlls)
+    add_custom_command(TARGET ${target} POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+              ${_maiz_runtime_dlls} "$<TARGET_FILE_DIR:${target}>"
+      COMMENT "Staging the MinGW runtime beside ${target} (loader-order fix)")
+  endif()
+endfunction()
 add_executable(maiz_smoke tests/embed_smoke.cpp)
 target_link_libraries(maiz_smoke PRIVATE voidmaiz)
 add_test(NAME embed_smoke COMMAND maiz_smoke)
@@ -484,8 +573,37 @@ target_link_libraries(maiz_measures_smoke PRIVATE voidmaiz)
 add_test(NAME measures_smoke COMMAND maiz_measures_smoke)
 
 add_executable(maiz_graph_smoke tests/graph_smoke.cpp)
-target_link_libraries(maiz_graph_smoke PRIVATE voidmaiz)
+target_link_libraries(maiz_graph_smoke PRIVATE voidmaiz_graph) # and nothing else: the claim, linked
 add_test(NAME graph_smoke COMMAND maiz_graph_smoke)
+
+# ── Void Rancho beside us: voidmaiz/rancho.hpp, tested (2026-10-31) ─────────
+# Rancho (the database layer) takes our Core through maiz::RanchoLink and our
+# Leiden through voidmaiz_graph. The link is header-only and we never link
+# Rancho ourselves; this builds the one test that drives both together.
+#
+# ON BY DEFAULT WHEN WE ARE THE TOP-LEVEL PROJECT and Rancho is cloned beside
+# us: since 2026-11-02 Rancho keeps its own suite out of a parent's ctest
+# (RANCHO_BUILD_TESTS is off as a subdirectory) and reads either spelling of
+# VOIDCORE_ROOT, so adding it costs one library and SQLite, nothing else.
+# NEVER when we are a subdirectory: the host adds Rancho itself (Void Hormiga
+# will), and two add_subdirectory calls on one repository collide. A parent
+# that already added Rancho gets the test anyway, through TARGET voidrancho.
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR AND EXISTS "${VOIDRANCHO_ROOT}/CMakeLists.txt")
+  set(_maiz_rancho_default ON)
+else()
+  set(_maiz_rancho_default OFF)
+endif()
+option(MAIZ_WITH_RANCHO "Add ../VoidRancho (top-level builds only) and build rancho_link_smoke" ${_maiz_rancho_default})
+if(MAIZ_WITH_RANCHO AND NOT TARGET voidrancho AND CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR
+   AND EXISTS "${VOIDRANCHO_ROOT}/CMakeLists.txt")
+  add_subdirectory("${VOIDRANCHO_ROOT}" voidrancho)
+endif()
+if(TARGET voidrancho)
+  add_executable(maiz_rancho_link_smoke tests/rancho_link_smoke.cpp)
+  target_link_libraries(maiz_rancho_link_smoke PRIVATE voidmaiz voidrancho)
+  maiz_stage_runtime(maiz_rancho_link_smoke)
+  add_test(NAME rancho_link_smoke COMMAND maiz_rancho_link_smoke)
+endif()
 
 add_executable(maiz_gesture_smoke tests/gesture_smoke.cpp)
 target_link_libraries(maiz_gesture_smoke PRIVATE voidmaiz)
@@ -603,11 +721,6 @@ target_include_directories(maiz_reduce_conformance PRIVATE vendor)
 add_test(NAME reduce_conformance
          COMMAND maiz_reduce_conformance "${VOIDCORE_ROOT}/../conformance/reduce/cases")
 
-if(WIN32 AND VOIDCORE_DLL)
-  add_custom_command(TARGET maiz_smoke POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${VOIDCORE_DLL}" "$<TARGET_FILE_DIR:maiz_smoke>")
-endif()
 
 # ── the toolchain runtime, next to the binaries (Windows/MinGW) ──────────────
 #
@@ -629,18 +742,8 @@ endif()
 # Copying the runtime next to the executables makes the directory search win, so
 # the binaries load the runtime they were BUILT against no matter which shell
 # launches them — ctest, Git Bash, PowerShell or a double-click.
-if(WIN32 AND CMAKE_CXX_COMPILER_ID MATCHES "GNU")
-  get_filename_component(_maiz_toolchain_bin "${CMAKE_CXX_COMPILER}" DIRECTORY)
-  set(_maiz_runtime_dlls "")
-  foreach(_dll libstdc++-6.dll libgcc_s_seh-1.dll libgcc_s_dw2-1.dll libwinpthread-1.dll)
-    if(EXISTS "${_maiz_toolchain_bin}/${_dll}")
-      list(APPEND _maiz_runtime_dlls "${_maiz_toolchain_bin}/${_dll}")
-    endif()
-  endforeach()
-  if(_maiz_runtime_dlls)
-    add_custom_command(TARGET maiz_smoke POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy_if_different
-              ${_maiz_runtime_dlls} "$<TARGET_FILE_DIR:maiz_smoke>"
-      COMMENT "Staging the MinGW runtime next to the binaries (loader-order fix)")
-  endif()
-endif()
+# Applied by maiz_stage_runtime() (defined beside enable_testing) to every test
+# binary that may be built ON ITS OWN: maiz_smoke, and rancho_link_smoke, which
+# Void Rancho found exiting 127 before main in their superproject (2026-11-02),
+# because nothing had staged anything beside it.
+maiz_stage_runtime(maiz_smoke)

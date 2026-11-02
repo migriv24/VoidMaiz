@@ -173,7 +173,10 @@ public:
      * this one. It moves on every dispatch except the reads hosts ask between
      * edits — Void Core's query family (`ls`, `cat`, `get`, `find`, `glyphs`,
      * `mantles`, `tree`, `where`, `describe`, `axes`, `help`, `version`; its
-     * dispatch/verbs_query.c writes nothing), `history`, and `config get` —
+     * dispatch/verbs_query.c writes nothing), the read-only graph verbs
+     * (`links`, `values`, `related`, `bindings`), `history`, and `config get`
+     * or a bare `config` — Void Rancho's sync asks `cat`, `links` and `config`,
+     * so a sync costs the host no export (voidmaiz/rancho.hpp) —
      * and on replace_state, on a register_glyph that changes a descriptor (the
      * same one again is a no-op), and on raw(), which hands out the means to
      * change anything. Which verbs mutate is Core's to say and it does not say

@@ -24,8 +24,28 @@
  *    exactly this tree; a view can show level 1 and expand one community at a
  *    time, so what it draws is bounded by a cluster's size, not the mantle's
  *    (hierarchical aggregation, Elmqvist & Fekete, IEEE TVCG 2010).
- *  - NMI, to measure a clustering against known groups. */
+ *  - NMI, to measure a clustering against known groups.
+ *
+ * GRAPH ANALYSIS IS VOID RANCHO'S (the author, 2026-11-02, Q43). It moves to
+ * Rancho as rancho/graph.hpp (namespace rancho::graph, target voidrancho_graph).
+ * When the build has Rancho's target, cmake/voidmaiz_graph.cmake defines
+ * VOIDMAIZ_GRAPH_IS_RANCHO and this header is a FORWARD: maiz::graph names
+ * rancho::graph, so `maiz::graph::leiden` keeps compiling. Without Rancho it is
+ * the declarations below, compiled from our FROZEN copy (src/graph/graph.cpp):
+ * fixes and new functions go to Rancho, not here. Until the move, Rancho
+ * clusters with this copy through the same target; a signature change is
+ * announced to Rancho before it lands. Depends on nothing; keep it so. */
 #pragma once
+
+#if defined(VOIDMAIZ_GRAPH_IS_RANCHO) && VOIDMAIZ_GRAPH_IS_RANCHO
+
+#include "rancho/graph.hpp"
+
+namespace maiz {
+namespace graph = ::rancho::graph;
+}
+
+#else
 
 #include <cstdint>
 #include <string>
@@ -89,3 +109,5 @@ Hierarchy hierarchy(const Graph& g, std::uint32_t target_size, const LeidenOptio
 double nmi(const std::vector<std::uint32_t>& a, const std::vector<std::uint32_t>& b);
 
 } // namespace maiz::graph
+
+#endif // VOIDMAIZ_GRAPH_IS_RANCHO

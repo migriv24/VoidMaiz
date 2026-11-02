@@ -24,6 +24,15 @@ is one more shell in this repository: [`src/shell/shell_ios.mm`](/../src/shell/s
 > The shell is compiled and launched only by CI (below). Until that job has run
 > green, `shell_ios.mm` is reasoned, not witnessed; this page's platform facts
 > are asserted from Apple's documentation and the sources listed at the end.
+>
+> **First run, 2026-10-30: red at the device build.** clang compiled
+> `shell_ios.mm` with manual reference counting. It rejected the `__weak`
+> references, and the weak ivar `_exportPicker` became "unavailable": six errors,
+> all one cause. ARC had been asked for with
+> `$<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>`, which the Xcode generator did not
+> pass to the static libraries. Since 2026-11-02 it is set on each `.mm` file
+> (`COMPILE_OPTIONS -fobjc-arc`) and as `XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC`
+> on `voidmaiz_app` and `voidmaiz_imgui`. The Simulator steps have not run yet.
 
 ## Developing iOS with no Mac
 
