@@ -32,7 +32,17 @@ is one more shell in this repository: [`src/shell/shell_ios.mm`](/../src/shell/s
 > `$<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>`, which the Xcode generator did not
 > pass to the static libraries. Since 2026-11-02 it is set on each `.mm` file
 > (`COMPILE_OPTIONS -fobjc-arc`) and as `XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC`
-> on `voidmaiz_app` and `voidmaiz_imgui`. The Simulator steps have not run yet.
+> on `voidmaiz_app` and `voidmaiz_imgui`. The second run then compiled and failed
+> to link Foundation and CoreGraphics (NSString, NSURLSession, CGRectGetMaxY…).
+> UIKit does not bring them to the linker, so they are now named on
+> `voidmaiz_app` and `voidmaiz_imgui`.
+>
+> **First green run, 2026-11-02 (run 41548907282, commit b2f2b8a).** The job
+> built for device and Simulator, launched `maiz_portable` and found it still
+> running 20 s later. It sent the app to the background and back and found
+> `portable.state.json` written, and the screenshots show the List screen
+> drawn by the iOS shell. That is witnessed in the Simulator. It is not yet
+> witnessed on a real iPhone, and no finger has touched it.
 
 ## Developing iOS with no Mac
 

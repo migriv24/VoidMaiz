@@ -7922,3 +7922,14 @@ Rancho has not moved yet:
 - Void Maiz for Android arm64 builds whole: `libmaiz_portable.so` with one static
   `libvoidcore.a`.
 - Our own suite: 31 tests, `reduce_conformance` aside.
+
+**The iOS shell runs (2026-11-02, later still).** With ARC on, the next CI run compiled and failed
+to link: Foundation and CoreGraphics were never named, and UIKit does not bring them to the
+linker. With both named, run 41548907282 (b2f2b8a) is **green on all four jobs**.
+- The iOS job built for device and Simulator.
+- It launched `maiz_portable` and found it still running after 20 s.
+- After background and back, it found `portable.state.json` written.
+- Its screenshot shows the List screen.
+
+This is the first time `shell_ios.mm` has been seen running anywhere ([iOS](/concepts/ios.md)).
+That cleared the way for `main`: `ios` is merged into it.
