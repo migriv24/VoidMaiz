@@ -1,15 +1,49 @@
 ---
 type: Questions
 title: Developer questions
-description: Open decisions for the author, each with a lean. Open — Q27 (should wire routing be a CanvasStyle option; lean: Orthogonal yes but probably per-glyph, not per-canvas, and `Direct` is just correct behaviour rather than a mode), Q26 (where an act rune's role list lives; lean: a `roles` key on the descriptor, asked upstream rather than invented here), Q25 (which mantle a compiled attention graph belongs in; the Device enum is already generalized to an open channel string), Q23 (should JoinFn see the per-source grouping; lean yes, additively, when a client asks), Q22 (should identifiers accept non-ASCII; lean ASCII-only for now, widening is additive), Q21 (may the out-of-tree test harness have dependencies; lean stdlib-only Python), Q20 (whose attention the user action graph records — per-peer or shared across Palabra peers; has a privacy cost, decide before anything materializes one), Q16–Q19 (Void Hormiga's four Allomone boundary questions; the engine is built, the calls are the author's), Q12 (widget kit — ImGui-composed vs sanctioned Qt-class adapter), Q13 (surface-census trigger), Q14 (where a census bundle lands), Q15 (retarget moves to `place` now that Core 0.2.5 landed — takes moves out of undo). Q11 (workspace rung) decided 2026-07-20: enable ImGui docking. Q31–Q35 (collaborative canvas) decided 2026-09-20: the author accepted every lean. Q28 decided 2026-09-21: layout mechanisms in the library, layouts in the host. Q36 decided 2026-09-22: the LAN socket layer is voidmaiz_lan + LanSession. Q29 decided 2026-09-23: the platform keyboard, integrated as a holiday (concepts/text-input.md); the drawn keyboard is the fallback.
+description: Open decisions for the author, each with a lean. Open — (Q38, Q41 and Q42 moved to Void Hammer on 2026-10-17 as its Q7–Q9), Q39 (take the console into the library; lean yes, two hosts wrote it, with a `source` on LogEntry), Q40 (a shared musical clock for Void Loops Studio; lean the app computes it, Palabra carries it, the library draws a transport strip once a second host wants one), Q27 (should wire routing be a CanvasStyle option; lean: Orthogonal yes but probably per-glyph, not per-canvas, and `Direct` is just correct behaviour rather than a mode), Q26 (where an act rune's role list lives; lean: a `roles` key on the descriptor, asked upstream rather than invented here), Q25 (which mantle a compiled attention graph belongs in; the Device enum is already generalized to an open channel string), Q23 (should JoinFn see the per-source grouping; lean yes, additively, when a client asks), Q22 (should identifiers accept non-ASCII; lean ASCII-only for now, widening is additive), Q21 (may the out-of-tree test harness have dependencies; lean stdlib-only Python), Q20 (whose attention the user action graph records — per-peer or shared across Palabra peers; has a privacy cost, decide before anything materializes one), Q16–Q19 (Void Hormiga's four Allomone boundary questions; the engine is built, the calls are the author's), Q12 (widget kit — ImGui-composed vs sanctioned Qt-class adapter), Q13 (surface-census trigger), Q14 (where a census bundle lands), Q15 (retarget moves to `place` now that Core 0.2.5 landed — takes moves out of undo). Q11 (workspace rung) decided 2026-07-20: enable ImGui docking. Q31–Q35 (collaborative canvas) decided 2026-09-20: the author accepted every lean. Q28 decided 2026-09-21: layout mechanisms in the library, layouts in the host. Q36 decided 2026-09-22: the LAN socket layer is voidmaiz_lan + LanSession. Q29 decided 2026-09-23: the platform keyboard, integrated as a holiday (concepts/text-input.md); the drawn keyboard is the fallback. Q43 decided 2026-11-02: graph analysis lives in Void Rancho, as the leaf target voidrancho_graph, with voidmaiz/graph.hpp forwarding (concepts/rancho.md).
 tags: [status:current, audience:dev, confidence:asserted]
-timestamp: 2026-08-09T00:00:00Z
+timestamp: 2026-11-02T00:00:00Z
 ---
 
 Open decisions, with leans so a non-answer has a sensible default. Answer inline,
 in chat, or via FaultSack notes; answers fold into concepts and clear from here.
 
 # Open
+
+- **Q41 — the room host: MOVED to Void Hammer (its Q8) on 2026-10-17**, with
+  the networking code. See `VoidHammer:/developer_questions.md`.
+
+- **Q42 — answering the phones' internet probes: MOVED to Void Hammer (its Q9) on 2026-10-17**, with
+  the networking code. See `VoidHammer:/developer_questions.md`.
+
+- **Q38 — discovery without broadcast: MOVED to Void Hammer (its Q7) on 2026-10-17**, with
+  the networking code. See `VoidHammer:/developer_questions.md`.
+
+- **Q39 — does the console move into the library?** Two hosts have now written
+  it: Void Hormiga's source-tagged console (2026-09-20: who said each line,
+  `clear` as a mark that destroys nothing, "as text" for selection, verbosity for
+  an agent) and Void Squid's console over a Session (2026-10-12, with toasts, a
+  busy overlay and seeded dock workspaces). Two hosts with the same need is the
+  rung. **Lean: yes**, as `voidmaiz/console.hpp` in the view module, starting
+  from Hormiga's code (it was written host-free to be lifted), fed by
+  `SessionOptions::on_command` and the new `on_log`. And **yes to a `source` on
+  `LogEntry`**, filled by the emitting library, because inferring it from `op`
+  is a guess that holds only while the vocabulary is small (Hormiga's point).
+  Toasts and the busy overlay come with it; the dock workspace seeding is a
+  smaller second piece. Menus stay per host. Hormiga's `ls`/`cd` question is
+  Void Core's and stays with them.
+
+- **Q40 — a shared musical clock (Void Loops Studio, 2026-10-04).** Jamming
+  needs tempo, a beat origin and each peer's clock offset: ephemeral like
+  presence, but latency-sensitive. **Lean: the application computes it, Palabra
+  carries it** (an unreliable, low-latency lane beside presence is a transport
+  property and theirs to define), **and the library draws a transport strip in
+  the session chrome only when a second host wants one.** VLS draws its own
+  until then. Their other question (a third mark for a "bounced" Loop between
+  private and shared) needs no new state: the reference node is shared and
+  marked as such, the recipe mantle is private and padlocked on the owner's
+  side. Two existing marks on two runes say it.
 
 - **Q27 — should wire routing be a `CanvasStyle` option?** Raised 2026-09-04 by
   Void Mago, the first client whose graph is entirely loose wires. They proposed:

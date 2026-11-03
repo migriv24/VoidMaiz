@@ -155,6 +155,22 @@ int main() {
     CHECK(grown.find("late") != nullptr); // pushed after projection: still found
     CHECK(grown.find("t3") && grown.find("t3")->name == "t3");
 
+    // undo settings survive replace_state, as glyphs do
+    {
+        maiz::Core u;
+        u.register_glyph(R"({"glyph":"thing","label":"Thing","fields":["note"]})");
+        u.set_undo_depth(2);
+        u.dispatch("mantle new m");
+        u.dispatch("rune new thing a");
+        CHECK(u.replace_state(u.export_state()));
+        for (int k = 0; k < 5; ++k) u.dispatch("set a note v" + std::to_string(k));
+        CHECK(u.dispatch("history").lines.size() == 2); // the depth, not Core's default 200
+        u.set_undo(false);
+        CHECK(u.replace_state(u.export_state()));
+        u.dispatch("set a note off");
+        CHECK(!u.dispatch("undo").ok); // still off
+    }
+
     if (failures) std::cerr << failures << " failure(s)\n";
     else std::cout << "OK - projection fast paths agree with the slow ones\n";
     return failures ? 1 : 0;

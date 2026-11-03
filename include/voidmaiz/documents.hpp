@@ -9,7 +9,7 @@
  * content URI, later, after its activity was paused and resumed. So this is a
  * request and a result, never a call that returns a path:
  *
- *     maiz::android_pick_document(activity, 7, "image/*", photos_dir);
+ *     maiz::android_pick_document(activity, 7, "image/png", photos_dir);  // or any image type
  *     ...every frame...
  *     maiz::DocumentResult r;
  *     while (maiz::android_take_document(activity, r)) { if (r.request == 7 && r.ok()) use(r.path); }
@@ -51,7 +51,9 @@ struct DocumentResult {
     bool ok() const { return status == "ok"; }
 };
 
-/* Open the system picker for `mime` ("image/*", "*\/*"). The chosen file is
+/* Open the system picker for `mime`, a type or a pattern ("image/" then a star picks any
+ * picture; a star, a slash and a star picks anything; this comment cannot spell
+ * them, since both contain a comment delimiter). The chosen file is
  * copied into `dest_dir` (created if missing). `request` is the host's own tag,
  * echoed in the result. Returns false when there is no activity to ask. */
 bool android_pick_document(ANativeActivity* activity, int request, const std::string& mime,

@@ -32,6 +32,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <iostream>
 #include <string>
 
@@ -238,6 +239,48 @@ static void selftest() {
         Session third(app, o2);
         REQUIRE(third.start());
         third.close();
+    }
+
+    /* ── 3a. A lock whose process is gone (2026-10-17) ─────────────────────────
+     * The claim carries a pid and a host. On THIS host, a pid that is not
+     * running is a crashed window, and the next session takes the lock instead
+     * of asking a person to delete a file. From ANOTHER host nothing can be
+     * known, so the same dead pid still refuses. */
+    {
+        const std::string lock_path = std::string(state) + ".lock";
+        std::string claim;
+        {
+            SessionOptions o;
+            o.state_path = state;
+            Session crashed(app, o);
+            REQUIRE(crashed.start());
+            std::ifstream in(lock_path, std::ios::binary);
+            claim.assign(std::istreambuf_iterator<char>(in), {});
+            crashed.close();
+        }
+        const auto at = claim.find("\"pid\":");
+        REQUIRE(at != std::string::npos);
+        const auto end = claim.find_first_of(",}", at);
+        const std::string dead = claim.substr(0, at) + "\"pid\":2147480000" + claim.substr(end);
+        auto plant = [&](const std::string& text) {
+            std::ofstream out(lock_path, std::ios::binary | std::ios::trunc);
+            out << text;
+        };
+
+        plant(dead);
+        SessionOptions o;
+        o.state_path = state;
+        Session after(app, o);
+        REQUIRE(after.start()); // same host, dead pid: stale, taken
+        after.close();
+
+        const auto h = dead.find("\"host\":\"");
+        REQUIRE(h != std::string::npos);
+        plant(dead.substr(0, h) + "\"host\":\"some-other-machine\"" +
+              dead.substr(dead.find('"', h + 8) + 1));
+        Session elsewhere(app, o);
+        REQUIRE(!elsewhere.start()); // another host: cannot know, so it asks
+        std::remove(lock_path.c_str());
     }
 
     /* ── 3b. A PERSON OUTRANKS AN AGENT ───────────────────────────────────────

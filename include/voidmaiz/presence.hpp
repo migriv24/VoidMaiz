@@ -116,6 +116,13 @@ struct SurfaceDecl {
     std::string id;                 // application-chosen, stable across frames: "canvas",
                                     // "table:people", "map"
     std::string kind;               // host vocabulary: "canvas" | "list" | "map" | …
+    /* How it is presented on THIS device: "window", "screen", "sheet", "panel",
+     * "bar" (2026-10-17, asked by Void Hormiga). The id is the CONCEPT and
+     * never the form: a phone's Data screen and a desktop's Data window both
+     * declare "table:data", so a peer reads "in Data" whatever device someone
+     * is on. The form is what differs, and an Allomone rule may read it
+     * (`shown_as "sheet"`, register_device_predicates). "" = unsaid. */
+    std::string form;
     Mark mark = Mark::Outline;
     std::vector<std::string> runes; // rune ids shown this frame, in declaration order
     bool focused = false;           // the one the person is working in
@@ -131,7 +138,7 @@ class Surfaces {
     /* Declare a surface (idempotent within a frame: a second call updates
      * kind/mark and keeps the runes already shown). */
     void declare(std::string_view surface_id, std::string_view kind = {},
-                 Mark mark = Mark::Outline);
+                 Mark mark = Mark::Outline, std::string_view form = {});
 
     /* This surface shows this rune (by id). Declares the surface if needed. */
     void show(std::string_view surface_id, std::string_view rune_id);

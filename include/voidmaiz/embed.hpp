@@ -173,7 +173,10 @@ public:
      * this one. It moves on every dispatch except the reads hosts ask between
      * edits — Void Core's query family (`ls`, `cat`, `get`, `find`, `glyphs`,
      * `mantles`, `tree`, `where`, `describe`, `axes`, `help`, `version`; its
-     * dispatch/verbs_query.c writes nothing), `history`, and `config get` —
+     * dispatch/verbs_query.c writes nothing), the read-only graph verbs
+     * (`links`, `values`, `related`, `bindings`), `history`, and `config get`
+     * or a bare `config` — Void Rancho's sync asks `cat`, `links` and `config`,
+     * so a sync costs the host no export (voidmaiz/rancho.hpp) —
      * and on replace_state, on a register_glyph that changes a descriptor (the
      * same one again is a no-op), and on raw(), which hands out the means to
      * change anything. Which verbs mutate is Core's to say and it does not say
@@ -215,6 +218,14 @@ public:
      *
      * Returns false (changing nothing) if the new manager cannot be created. */
     bool replace_state(std::string_view state_json);
+
+    /* Undo recording and its depth (voidcore.h: vc_set_undo, vc_set_undo_depth),
+     * REMEMBERED: replace_state applies them to the new manager, as it does the
+     * glyphs. Set through the raw handle, they were lost at every replace —
+     * found 2026-10-27 when a host's undo budget of 4 frames became Core's
+     * default 200 on its first working set, and a 384 MB cap was hit at 30 edits. */
+    void set_undo(bool on);
+    void set_undo_depth(int depth);
 
     /* Install/replace the log sink; pass {} to remove. */
     void set_log_sink(LogSink sink);

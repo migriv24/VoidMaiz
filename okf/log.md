@@ -7429,6 +7429,241 @@ here directly. Two things were this library's:
   its known clients assumes 16-bit (`ImDrawIdx` appears nowhere outside the
   vendor tree). Every client recompiles ImGui with it.
 
+## 2026-10-17 — Portable apps and iOS: the shell becomes the library's, and six messages answered
+
+The author opened iOS: *"void maiz for iOS devices … if possible to actually
+begin development on this device … I want it to be as easy as possible for
+other void maiz based applications to easily port their code onto iOS."* And:
+work through the inbound messages.
+
+**The decision under iOS: the library owns the platform shell.** Every host had
+written its own Android shell (Interaction Combinators 234 lines, Void Hormiga
+388, mostly the same lines); iOS done that way is every host writing a second
+shell in Objective-C++ on a machine none of them owns. So a host now writes one
+`maiz::App` (`app.hpp`) against a `maiz::Device` (`device.hpp`) and calls
+`maiz_add_app()` (`cmake/VoidMaizApp.cmake`), and the library supplies the shell
+per platform: `shell_desktop.cpp`, `shell_android.cpp`, `shell_ios.mm`, with one
+frame order shared in `frame.cpp`. The Device states **rules, not just a name**
+(`can_quit`, `self_updates`, `edge_back`), because what differs on iOS is mostly
+rules: no Back button, no quitting, no self-update, no GPU in the background, no
+processes. **Behaviour follows the platform, appearance follows the app.**
+[Portable apps](/concepts/portable-apps.md), [iOS](/concepts/ios.md).
+
+**Built and measured on this machine:**
+- the desktop shell with **`--device`** previews (iPhone SE / 13 mini / 16 /
+  16 Pro Max, iPad 11, Pixel 8, a small Android): the screen in points, the safe
+  area, the island or notch, the home indicator, the phone's rules, the mouse as
+  a finger; plus `--screenshot` and `--input` so an agent can look. The example
+  (`examples/portable_app.cpp`: three screens, a nav bar, stacks, a Session
+  saved on Background) was screenshotted as an iPhone 16 in portrait and
+  landscape, and driven: tap a row, the note opens with a chevron; edge swipe,
+  the screen shades and nothing under the finger is pressed; release, back at
+  the list. The same input on the Android profile leaves the note open, as it
+  must (Android's system owns that gesture). Background → `saved` → foreground,
+  and no Quit drawn on iOS.
+- **the Android shell compiles** (NDK r28, arm64, `libmaiz_portable.so` with
+  `ANativeActivity_onCreate` exported), and MaizActivity's four new methods
+  (open URL, share text, haptics, move to back) dex with the signatures the
+  native side looks up.
+- the suite: 26/26 (the known `reduce_conformance` excluded, as in CI).
+
+**Written, compiled only by CI:** `shell_ios.mm` (UIScene life cycle, MTKView
+and ImGui's Metal backend vendored from the same `v1.92.1-docking` tag the rest
+of ImGui is, byte-checked first; the gate fed UIKit's coalesced samples; a
+UIKeyInput keyboard under the textinput pivot; PHPicker, the document picker,
+the share sheet, haptics, `openURL`, NSURLSession as `ios_http`, CoreLocation),
+the iOS `Info.plist` template and a privacy manifest. The CI `ios` job builds for
+device and Simulator, launches the example in the Simulator, backgrounds it,
+checks its document was written and uploads screenshots. **Not yet run**: the
+push was refused (the token here has no `workflow` scope), so the commit waits
+on the local `ios` branch for the author.
+
+**Found before any iOS build existed:**
+- `update::platform_tag()` answered `macos-arm64` on an iPhone (both Apple on
+  arm64), so the updater would have offered it a Mac release. Now `ios-arm64` /
+  `ios-simulator`, and nothing in `update.cpp` that spawns a process compiles
+  for iOS (`system`/`popen` are unavailable there).
+- **Networking hits a wall on iOS as built**: UDP broadcast and multicast need
+  an entitlement Apple grants on request, and both `LanSession`'s beacon and
+  Reticulum's automatic interface depend on them. Q38 leans to Bonjour behind a
+  discovery seam. Between iPhone and Android, LE is the shared radio; Wi-Fi
+  Direct does not exist on iOS; iOS 26's Wi-Fi Aware is the one to watch.
+
+**Also built, from the messages:**
+- **`voidmaiz/nav.hpp`**: Void Hormiga's navigation bar, app bar and per-
+  destination stacks, lifted as they asked (09-23), with the ant replaced by a
+  face callback, icons optional, the chevron drawn as a path, and **Back
+  gathered from every platform** into `back_pressed()`: Android's key (which the
+  stock ImGui backend does NOT map; `android_system_key` does, answering their
+  "please confirm"), iOS's edge swipe (new in the touch gate), a desktop's
+  Escape. A Back nobody claims gets the platform default.
+- **`voidmaiz/http.hpp`**: the network seam lifted out of `update.hpp`
+  (Hormiga 09-22 #5); `maiz::update::Http` still resolves.
+- **The Device's services** answer Hormiga's 09-22 #3 and #4: open a URL / `tel:`
+  / `mailto:`, share, haptics, lifecycle events. Camera capture, date and time
+  pickers and text selection (#6, #7) are not built.
+- **Device predicates for Allomone** (Hormiga 09-23 Ask 2): `platform`, `form`,
+  `surface`, `shown_as`, and `SurfaceDecl::form`; pinned in
+  `host_predicates_smoke` (one script, a phone and a desktop).
+- **Void Squid's asks** (10-09, 10-12): `Camera3D` with `compile_camera3d` /
+  `parse_camera3d` in their serialisation; `SessionOptions::on_log`, a sink that
+  adds to the journal instead of replacing it, and a line that `Session::core()`
+  is for reads; the `effect <op>` shape documented; `MAIZ_BUILD_TESTS` /
+  `MAIZ_BUILD_EXAMPLES`; a parent-supplied `voidcore` target used as is; and the
+  advisory lock now carries **pid and host**, so a crashed window's lock on the
+  same machine is recognized as stale and taken (pinned in the headless
+  selftest, including that a claim from another host still refuses).
+
+**Messages:** the four in our root (VLS 10-04, Void Jelly 10-05, Void Squid
+10-09 and 10-12) and two **misfiled in Void Hormiga's root and never logged**
+(09-22 phone gaps, 09-23 navigation), plus their two 09-20 messages the index
+had listed as unanswered. All answered; replies listed in the
+[index](/index.md). Q39 (take the console into the library, lean yes: two hosts
+wrote it) and Q40 (VLS's shared musical clock) opened.
+
+## 2026-10-17 (second pass) — The field network: a carried router for 40+ mixed devices, and a hardware section
+
+The author asked for a research phase on iOS and collaboration between devices,
+for a Void Hormiga client: *"40+ devices in a single room to be updated and
+communicating with each other … a mix of apple and android devices. Using
+Bluetooth would be slow, and so having a mini router would be great. They're
+usually off grid and on the move."* The device: a mobile "universal router"
+without internet, scaling by adding units, fitting in a backpack, compatible
+with Void Buzz, and not a Void Buzz Tree (it moves). And: *"I'll be the one to
+purchase the hardware … we might need a mini section in the okf just to help with
+real physical hardware set up … generalizable … 1-6 devices would require a
+different set up than 50+."*
+
+**What the research settled:**
+- Between iPhone and Android with no infrastructure, only **Bluetooth LE**
+  crosses, at about 20 KB/s (Ditto's transport table); each platform's
+  peer-to-peer Wi-Fi (AWDL, Wi-Fi Aware) finds only its own platform; iOS 26's
+  Wi-Fi Aware is unconfirmed against Android. **A shared Wi-Fi is the only fast
+  common link**, so a group carries one.
+- An **ESP32 cannot be that router** for this client: its soft AP takes 15
+  stations at most, and NimBLE 9 connections. It stays as an optional radio
+  bridge (Bluetooth LE, ESP-NOW for Void Buzz, LoRa between kits).
+- **iOS needs no broadcast on a kit**: the brain is found by Bonjour (allowed for
+  declared service types), a DNS name or a fixed address. The existing iOS
+  Reticulum clients already connect by TCP to an `rnsd`; Sideband for iOS is
+  still a TestFlight beta.
+- Two traps: **Android routes app traffic over mobile data when the Wi-Fi has no
+  internet** (fix: bind sockets to the Wi-Fi network), and both platforms probe
+  for internet (fix on an off-grid kit: answer the probes locally, Q42).
+- Wi-Fi planning figure: **25–30 active clients per radio**, about 50 per
+  dual-band unit, far below vendor association claims.
+
+**Written:** [the field network](/concepts/field-network.md) (roles: access
+point, brain, power, radio bridge; a **star** through the brain, 40 links not
+780; presence coalescing as the first software need; scaling; Reticulum brain to
+brain; Void Buzz) and a new **[hardware](/hardware/index.md)** section:
+[choosing](/hardware/choosing.md) (tiers by device count, specifications first,
+dated examples, battery arithmetic under the 100 Wh airline limit) and
+[setup](/hardware/setup.md) (step by step for the Room tier, the at-home test,
+packing, troubleshooting). Q38 updated (the kit settles discovery), Q41 (the
+room host, lean: library loop + app's HostApp) and Q42 (probe answers) opened.
+A note to Void Buzz and a section for Void Hormiga's client added to today's
+message. Nothing bought, built or measured: all `confidence:asserted`.
+
+## 2026-10-17 (third pass) — Void Hammer founded; the hardware moves there
+
+The author asked for more research (other open-source projects, recent academic
+work, phone add-ons, a laptop over USB, ideas outside the obvious) and then
+founded a new application: *"a dictionary for how to set up hardware for other
+devices, and easily flash code on them … keeps track of pricing … which vendors
+… bulk purchases … our own format for the documentation to make it easier to
+learn from."* Proposed as Void Lightyear; founded as **Void Hammer** (the
+author's fallback: "Lightyear" is an operating company, and beside Void Buzz it
+reads as Disney's Buzz Lightyear). `../VoidHammer`: OKF only, no code, a
+CLAUDE.md, and a bundle Void Core's OKF engine validates as conformant.
+
+**Moved:** this bundle's `hardware/choosing.md` and `hardware/setup.md` (written
+earlier today) now live at `VoidHammer:/guides/field-kit/`; the setup guide was
+rewritten there in the Hammer format (steps with ids, each with what you should
+see and what to do if not). `hardware/index.md` here is a pointer.
+**Kept:** [the field network](/concepts/field-network.md), because what the
+library's software must do on such a network is Void Maiz's. The line: Void
+Maiz owns reaching a device; Void Hammer owns the device.
+
+**The research** went to `VoidHammer:/research/off-grid-collaboration.md`. What
+in it bears on this library's software: the Amigo paper (ACM CCS 2025: phone
+meshes collapse under realistic crowds) and the iOS background rule that keeps
+Briar off iOS both argue for the star through a brain; the two Bridgefy breaks
+(CT-RSA 2021, USENIX Security 2022) are why the kit's sessions must never be
+described as stronger than Palabra and Reticulum make them; delay-tolerant
+networking describes what the lattice merge already gives (a phone carrying a
+group's work to the next group); and Windows' hotspot stops at 8 devices by
+default, so a laptop is a brain, not a router.
+
+**On Void Hammer and Void Hormiga** (the author asked whether they share a
+lot): they do, and they share it through this library. Hammer is the second
+client that could justify lifting Hormiga's record list and detail views, CSV
+import and the console (Q39) into Void Maiz, once Hammer has code that needs
+them.
+
+## 2026-10-17 (fourth pass) — 30 to 50 devices: two software rules for this library
+
+Researched in Void Hammer (`VoidHammer:/research/thirty-to-fifty.md`) on the
+author's ask to look closely at 30–50 devices. Two of its findings are this
+library's to build, now in [the field network](/concepts/field-network.md):
+**presence coalesced at the brain** (already listed) and **files as thumbnails,
+originals fetched on demand** (new): ten 3 MB photos a minute pushed to 39
+others is about 160 Mbps, the one load that can saturate a room. Everything
+else in that research (airtime, channels, builds, power) is hardware and stays
+in Void Hammer.
+
+## 2026-10-17 (fifth pass) — Networking moves to Void Hammer; Void Maiz keeps what it looks like
+
+The author: *"we can begin having hammer be the networking stuff and remove it
+from maiz, so that maiz becomes more pure. But be very careful with this. Be sure
+things are using palabra correctly as well. Make sure that maiz maintains the
+functionality it had before, but with void hammer now being a big part of it."*
+
+**Moved to `../VoidHammer/net`** (`VoidHammer:/concepts/networking.md`):
+`lan`, `radio` (+ its loopback stand-in), `net` (`Network`), `lanlink`
+(`LanSession`), `rnslink` (`RnsSession`), `rnsradio`, and their five tests, as
+targets `voidhammer_reach` and `voidhammer_net`, built from this CMake when
+`../VoidHammer` exists. With them, the pages [LAN transport](/concepts/lan-transport.md),
+[radios](/concepts/radios.md) and [field network](/concepts/field-network.md)
+(pointers left here) and Q38, Q41, Q42 (Void Hammer's Q7–Q9). **Kept here**:
+presence, claims, `netview`, `wires`, the share filter, Allomone's `present`:
+what networking looks like (the Q30 line, unchanged).
+
+**How nothing broke**: the code moved with its `maiz::` names; the six old
+headers forward to `voidhammer/*`; `voidmaiz_lan` and `voidmaiz_net` remain as
+interface targets; the base `voidmaiz` links `voidhammer_reach` because
+`radio.hpp` used to be in the base; `VOIDMAIZ_RETICULUM`, `VOIDMAIZ_HAVE_NET`
+and `VOIDMAIZ_HAVE_RNS` are kept. Hammer is optional, as Palabra always was.
+
+**Measured, against baselines taken before touching anything:**
+
+| | before | after |
+|---|---|---|
+| Void Maiz | 26/26 (27 registered) | **26/26** (27 registered; the five networking tests built from Hammer) |
+| Interaction Combinators | builds; duo selftest all ok | **builds; duo selftest all ok**; Android library links from `libvoidhammer_*.a` with the sync engine in it |
+| Void Hormiga | builds; 55/56 (known `reduce_conformance`) | **builds; 55/56** (the same one) |
+
+**One break, caught by the baseline and fixed before commit**: Void Hormiga's
+`hormiga_sync` links only `voidmaiz_lan` and includes `voidmaiz/lan.hpp`; the
+first alias exported only Hammer's include folder, so even the forwarding header
+was not found. Each alias now exports this repo's `include/` too, exactly as the
+old targets did. The lesson, kept: **an alias must export everything the target
+it replaces exported, not only what its new home needs.**
+
+**Palabra, checked against its "consumed two ways"**: added as a target (now
+only if no parent added it), linked through its exported aliases, its cJSON off
+and ours linked (the Maiz, Palabra and Core copies are byte-identical, 1.7.18),
+Reticulum requested with Palabra's own MSVC switch respected, and its newest
+work (2026-10-05 pipes) the one the radio bridge and its tests use.
+
+**Also:** the portable-app Android shell no longer installs the radio platform
+(an app that wants radios installs it); CI clones `VoidHammer` if it exists (it
+has no public repository yet, so CI builds without networking and says so) and
+looks for `voidhammer_net` to report the networking configuration; CLAUDE.md
+gains the ground rule. Messages: Void Hormiga (§8 of today's), Interaction
+Combinators, Void Palabra, and, from Void Hammer, Void Chisme (cells want its
+plan and sensor).
+
 ## 2026-10-24/25 — the projection at 10^5 runes, and values on edges (from Void Hormiga's issue #2)
 
 Void Hormiga's client runs a database of tens of thousands of runes in one
@@ -7529,3 +7764,172 @@ feed (Hormiga's message to them, section 4).
 `project_scale_smoke` covers the revision, the shared export, the memo, the
 glyph no-op, the digest and `replace_state`. 29 tests, all passing
 (`reduce_conformance` aside, as before).
+
+## 2026-10-31 — Void Rancho beside us: one Core, one Leiden, and the link
+
+Two messages arrived dated 2026-10-30. **Void Rancho**, the family's new database layer,
+compiles our `src/graph/graph.cpp` in place for clustering and asked for a note before
+`graph.hpp` changes. **Void Mago** answered our 09-21 asks: the `scan` column is fixed, and
+manifest-declared artifact names are accepted but not built (IC's second-writer workaround
+stays until they are). Nothing to build for Mago.
+
+The author asked us to adjust to Rancho **before** Void Hormiga does, since Hormiga is its
+first client. So we built Rancho (8/8), and then built the build Hormiga will be: one
+superproject adding both of us. Three defects, all invisible until the two of us met in one
+CMake tree:
+
+- **We could not configure together.** `VOIDCORE_ROOT` names Core's `core/` for us and Squid,
+  and the repository for Rancho. It is one cache variable, and both checks ran before looking
+  for a parent's `voidcore`. We now accept both spellings (a directory-local shadow) and skip
+  the check when `voidcore` exists.
+- **Two libvoidcore.dll in one process.** We linked the prebuilt Core as a bare path, which
+  `if(NOT TARGET voidcore)` cannot see, so Rancho (like Jelly before it) built a second one
+  from source with the same name. **The prebuilt is now `voidcore`, `SHARED IMPORTED GLOBAL`**:
+  Void Squid's 10-09 fix, made the library's. Measured in both add orders: one Core.
+- **`graph.cpp` in two archives.** `maiz::graph::leiden` was `T` in both `libvoidmaiz.a` and
+  `libvoidrancho.a`. It linked, because the first copy wins, which is an ODR violation that
+  happens to be harmless. **`voidmaiz_graph`** is now its own target, defined once per build by
+  `cmake/voidmaiz_graph.cmake` behind `if(NOT TARGET ...)`. `voidmaiz` links it PUBLIC (no host
+  change), and `graph_smoke` links it alone, so "depends on nothing" is a linker fact.
+
+And one piece of code Rancho had left to every host: **`voidmaiz/rancho.hpp`, `maiz::RanchoLink`**,
+the `CoreLink` over a `maiz::Core`. It is header-only, with no target, and we never link
+Rancho. `export_state` is `*state_text()`, so a full sync shares the projection's export. Our
+`revision()` does not move on Rancho's sync reads (`cat`, `links`, bare `config`), so a sync
+never costs the host its cached export. `tests/rancho_link_smoke.cpp` pins both, plus the
+round trip into the host's own Core, a behind-the-back edit caught by a full sync, and
+clustering through the store. It is opt-in (`-DMAIZ_WITH_RANCHO=ON`) until Rancho has a
+`RANCHO_BUILD_TESTS` switch. It also fixes `embed.hpp`'s comment, which had not listed the
+graph-family reads that the code already treated as reads.
+
+Rancho's §3 (where graph analysis lives) is **Q43**, with the lean *Rancho, as a leaf target
+with no SQLite or Core, our header forwarding*. No Void Maiz code calls `graph.hpp`; only its
+test does. Every proposed change on their side was tested on a scratch copy of their
+CMakeLists first, in both add orders. New page: [Void Rancho, beside us](/concepts/rancho.md).
+
+Checked against the hosts: Interaction Combinators builds. Void Hormiga's tests pass apart
+from the known one, but its `HEAD` does not compile on its own (`app.cpp` against
+`save_writer.hpp`, a half-landed refactor of theirs, unrelated to this change).
+
+30 tests by default (`reduce_conformance` aside, as before: Core's cases 24–25, boxes and
+`patch`, are not implemented here). 31 with Rancho beside us.
+
+## 2026-11-02 — Void Rancho took all three; the link test runs by default
+
+Rancho answered (`MESSAGE_FOR_VOIDMAIZ_rancho-all-three-taken-2026-11-02.md`). All three asks
+are in their CMake, checked in four configurations (both add orders, both root spellings).
+Two of them improve on what we asked for. They use a parent's `voidmaiz_graph` without
+reading `VOIDMAIZ_ROOT`, and `RANCHO_BUILD_TESTS` is on only when Rancho is the top-level
+project, so no host has to set it. They added `related` and `bindings` to their read list,
+named `maiz::RanchoLink` in their `core.hpp`, and agree with Q43's lean and both of its
+conditions.
+
+What we built in reply:
+
+- **The shim is gone.** `MAIZ_WITH_RANCHO` no longer shadows `VOIDCORE_ROOT` for their
+  directory.
+- **`rancho_link_smoke` is in the default suite.** `MAIZ_WITH_RANCHO` is now on by default when
+  we are the top-level project and Rancho is cloned beside us, which mirrors their switch. It
+  is never on when we are a subdirectory: the host adds Rancho itself, and two
+  `add_subdirectory` calls on one repository collide. A parent that added Rancho before us
+  still gets the test.
+- **A defect they found, which was ours.** On a shell with Git's `mingw64/bin` ahead of
+  `ucrt64/bin`, the link test exited 127 before `main`. The toolchain runtime and the Core DLL
+  were staged beside `maiz_smoke` only, so a test built alone, or one in another `bin/`, had
+  neither. And the Core was copied from `VOIDCORE_DLL`, which is never set when a parent (or
+  Rancho, added first) supplies `voidcore`, so in that order nothing was staged at all.
+  **`maiz_stage_runtime(<target>)`** now stages `$<TARGET_FILE:voidcore>` (whichever Core the
+  build has) and the MinGW runtime beside any test it is applied to. It is applied to
+  `maiz_smoke` and `rancho_link_smoke`. Reproduced on a solo build with the foreign MinGW first
+  on PATH: exit 127 with the runtime removed, exit 0 with it staged.
+
+Re-measured in a scratch superproject against the real Rancho, with our tests on, in both
+orders. Each order has one `libvoidmaiz_graph.a` defining `leiden` and no Rancho tests in the
+parent. Rancho-first builds and passes the link test with the foreign MinGW on PATH; Maiz-first
+correctly has no link test, because Rancho does not exist yet when we configure.
+
+31 tests by default with Rancho beside us (`reduce_conformance` aside, as before), and 30
+without it.
+
+## 2026-11-02 (later) — Graph analysis is Rancho's; Rancho is asked to get ready for phones; the iOS shell's first CI run
+
+The author ruled Q43: *"graph analysis code should live in void rancho. and also void rancho
+should ready itself to work for ios and android as well (of course, i don't see this as
+needing to be difficult). Then we should be able to get to a point where it lives on main,
+and our other clients should be able to handle things."*
+
+**The move is Rancho's to make; ours is a bridge** ([Void Rancho, beside us](/concepts/rancho.md) §2).
+No Void Maiz library code calls `maiz::graph`. Its callers are Rancho, Hormiga's store (moving
+to Rancho) with its `stressgen`, and our tests. We proposed the names: `rancho/graph.hpp`,
+namespace `rancho::graph`, a leaf target `voidrancho_graph` (no SQLite, no Core), and a guarded
+`cmake/voidrancho_graph.cmake`.
+
+`cmake/voidmaiz_graph.cmake` now switches by itself:
+- **When that fragment or target exists:** `voidmaiz_graph` is an INTERFACE target over it with
+  `VOIDMAIZ_GRAPH_IS_RANCHO=1`, and `voidmaiz/graph.hpp` forwards (`namespace graph =
+  ::rancho::graph`).
+- **Otherwise:** it compiles our copy, now frozen, which our public CI still needs because
+  Rancho is not on GitHub.
+
+`VOIDRANCHO_ROOT` is now defined before the fragment is included. `rancho_link_smoke` checks
+for `leiden` in the cluster settings, not for whose header was named.
+
+**Tested against a simulated move:** Rancho's tree copied to a scratch folder and changed as
+proposed; their repo untouched.
+- Their 8 tests pass.
+- Void Maiz on its own runs `graph_smoke` and `rancho_link_smoke` on `voidrancho_graph`.
+- A superproject holds one `libvoidrancho_graph.a`, with `graph::leiden` defined there alone,
+  in both add orders, and the app runs.
+- Against the real, unmoved Rancho, nothing changes: the frozen copy, and the default suite as
+  before.
+
+**Phones.**
+- **Measured (NDK r28.2, arm64, API 26):** Rancho compiles and links unchanged, the library and
+  all 8 tests. Not run; there is no device.
+- **The real gap was two Cores.** Our phone build compiles Core static as `voidcore_static`, which
+  Rancho's `if(NOT TARGET voidcore)` could not see, so it built Core's shared library beside it.
+  **Renamed to `voidcore`** (`voidcore_static` stays as an alias; no sibling spelled it).
+  - Maiz-first on Android: one static `libvoidcore.a` inside the app's `.so`.
+  - Rancho-first still yields Core's shared `.so`, because Core's CMake knows no static build.
+    Asked Core for one:
+    `../VoidCore/MESSAGE_FOR_VOIDCORE_maiz-a-static-core-on-phones-2026-11-02.md`.
+- **SQLite's temp files** (`temp_store=FILE`) have no writable default directory in an Android
+  app. Inside a `maiz::App` our shell already sets `TMPDIR` (since 2026-09-25), so only hosts
+  without the shell are exposed.
+- The rest went to Rancho as asks:
+  `../VoidRancho/MESSAGE_FOR_VOIDRANCHO_maiz-graph-analysis-is-yours-and-phones-2026-11-02.md`.
+  - `data_dir` vs `cache_dir`;
+  - the one call that makes a working set durable on `AppEvent::Background`;
+  - `phys_footprint` and a `release_memory()`;
+  - a CI of their own with iOS and Android compiles.
+
+**The iOS shell's first CI run (2026-10-30) was red at the device build** ([iOS](/concepts/ios.md)).
+All six errors had one cause: `shell_ios.mm` was compiled with manual reference counting.
+`$<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>` never reached clang under the Xcode generator for the
+static libraries. ARC is now set per `.mm` file (`COMPILE_OPTIONS`) and as
+`XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC` on `voidmaiz_app` and `voidmaiz_imgui`. `main`'s Windows
+leg was red on `radio_loopback.cpp` (MSVC's `min`/`max` macros); that file left with networking
+on `ios`, whose Windows leg is green.
+
+**Clients, rebuilt against this tree (2026-11-02),** all on the frozen graph copy because
+Rancho has not moved yet:
+- **Built:** Interaction Combinators and NodeBlocks.
+- **Built, with only the known `reduce_conformance` failing:** Void Chisme (42/43), Void Squid
+  (44 of its own pass; the "Not Run" rows are ours and Jelly's, unbuilt there) and Void
+  Verguenza (37/38).
+- **Void Hormiga** fails only in its own `app.cpp` (`SaveWriter::set_storage` and `Job`
+  members its `save_writer.hpp` lacks at 083bf4f, as on 10-31). Its suite is 64/65.
+- Void Maiz for Android arm64 builds whole: `libmaiz_portable.so` with one static
+  `libvoidcore.a`.
+- Our own suite: 31 tests, `reduce_conformance` aside.
+
+**The iOS shell runs (2026-11-02, later still).** With ARC on, the next CI run compiled and failed
+to link: Foundation and CoreGraphics were never named, and UIKit does not bring them to the
+linker. With both named, run 41548907282 (b2f2b8a) is **green on all four jobs**.
+- The iOS job built for device and Simulator.
+- It launched `maiz_portable` and found it still running after 20 s.
+- After background and back, it found `portable.state.json` written.
+- Its screenshot shows the List screen.
+
+This is the first time `shell_ios.mm` has been seen running anywhere ([iOS](/concepts/ios.md)).
+That cleared the way for `main`: `ios` is merged into it.

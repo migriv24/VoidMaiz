@@ -240,6 +240,15 @@ is the reference host, and it is a desktop binary on purpose: the mouse is a
 finger and Alt adds a mirrored second one, so the kit can be looked at without an
 APK.
 
+**Back from the edge (2026-10-17).** On iOS, "what an edge swipe navigates to"
+stopped being only the host's: iOS has no Back button, so the gate recognizes
+the swipe from the left edge itself when a shell sets `edge_back_dp`, reports it
+as `gestures.back`, and `back_pressed()` ([nav.hpp](/../include/voidmaiz/nav.hpp))
+hears it exactly like Android's Back key. The host still decides what Back
+means on each screen. A finger landing in the edge strip is an ordinary touch
+until it moves right, so a chevron drawn at the edge still taps; Android leaves
+the gate's edge off, because its system takes that gesture and sends a key.
+
 **The library does not own** a pane layout engine. That is Q28, and the lean is
 still the author's rule — climb one rung per real need.
 

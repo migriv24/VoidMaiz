@@ -749,4 +749,28 @@ bool parse_camera(std::string_view value, Camera& out) {
     return true;
 }
 
+std::string compile_camera3d(const Camera3D& cam, std::string_view config_key) {
+    char buf[224];
+    std::snprintf(buf, sizeof buf, "config set %.*s \"%.7g %.7g %.7g %.7g %.7g %.7g\"",
+                  (int)config_key.size(), config_key.data(), (double)cam.yaw, (double)cam.pitch,
+                  (double)cam.dist, (double)cam.tx, (double)cam.ty, (double)cam.tz);
+    return buf;
+}
+
+bool parse_camera3d(std::string_view value, Camera3D& out) {
+    auto trim = [](char ch) { return ch == '"' || ch == '\'' || ch == ' '; };
+    while (!value.empty() && trim(value.front())) value.remove_prefix(1);
+    while (!value.empty() && trim(value.back())) value.remove_suffix(1);
+    Camera3D c;
+    char extra;
+    std::string owned(value);
+    int n = std::sscanf(owned.c_str(), "%f %f %f %f %f %f %c", &c.yaw, &c.pitch, &c.dist, &c.tx, &c.ty,
+                        &c.tz, &extra);
+    if (n != 6 || !(c.dist > 0.0f)) return false;
+    for (float f : {c.yaw, c.pitch, c.dist, c.tx, c.ty, c.tz})
+        if (!std::isfinite(f)) return false;
+    out = c;
+    return true;
+}
+
 } // namespace maiz

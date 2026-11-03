@@ -95,6 +95,34 @@ void register_presence_predicates(allomone::PredicateRegistry& preds, const Rost
     });
 }
 
+const char* form_factor_name(FormFactor f) {
+    switch (f) {
+    case FormFactor::Phone: return "phone";
+    case FormFactor::Tablet: return "tablet";
+    case FormFactor::Desktop: break;
+    }
+    return "desktop";
+}
+
+void register_device_predicates(allomone::PredicateRegistry& preds, const DeviceFacts& facts,
+                                const Surfaces* surfaces, const Scene* scene) {
+    preds.add("platform", [&facts](const Subject&, std::string_view arg) { return facts.platform == arg; });
+    preds.add("form", [&facts](const Subject&, std::string_view arg) { return facts.form == arg; });
+    if (!surfaces) return; // no declarations: `surface` stays silent, never "false"
+    preds.add("surface", [surfaces, scene](const Subject& subject, std::string_view arg) {
+        const std::string id = rune_id_of(subject, scene); // the id trap, as for `present`
+        if (arg.empty()) return !surfaces->surfaces_showing(id).empty();
+        const SurfaceDecl* d = surfaces->find(arg);
+        return d && d->shown.count(id) > 0;
+    });
+    preds.add("shown_as", [surfaces, scene](const Subject& subject, std::string_view arg) {
+        const std::string id = rune_id_of(subject, scene);
+        for (const SurfaceDecl& d : surfaces->list())
+            if (d.form == arg && d.shown.count(id)) return true;
+        return false;
+    });
+}
+
 ShareFilter share_by_annotation(const allomone::Merged& merged, std::string property) {
     // copied: a filter the sync seam holds must not dangle into a dead Merged
     return [merged, property = std::move(property)](const SceneNode& n) {

@@ -3,7 +3,7 @@ type: Index
 title: Void Maiz
 description: The front door — what Void Maiz is, the founding commitments, and where every other document lives.
 tags: [status:current, audience:all, confidence:asserted]
-timestamp: 2026-08-10T00:00:00Z
+timestamp: 2026-11-02T00:00:00Z
 ---
 
 # Void Maiz
@@ -120,6 +120,48 @@ persistence are inherited from Void Core rather than bolted on.
   gets a dial pad). Also the Flutter investigation (verdict: take its keyboard
   design, not its runtime) and two finds: emoji were destroyed on input
   (`IMGUI_USE_WCHAR32` now), and Android's Back reached nothing.
+- **[Portable apps](/concepts/portable-apps.md)** (2026-10-17, opened for iOS):
+  **the library owns the platform shell; a host writes one `maiz::App`.** The
+  same source builds as a desktop window (and, with `--device iphone-16`, a
+  preview of that phone: its safe area, its hardware, its rules), an Android
+  `.so` and an iOS app, through `maiz_add_app()`. A `Device` answers what the
+  platform can do and **states its rules** (`can_quit`, `self_updates`,
+  `edge_back`) so a host never branches on a platform's name: *behaviour follows
+  the platform, appearance follows the app.* Also: `nav.hpp` (Void Hormiga's
+  navigation bar, lifted, with Back from every platform), `http.hpp`, and
+  Allomone predicates that read the device (`platform`, `form`, `surface`).
+- **[iOS](/concepts/ios.md)** (2026-10-17, draft): developing with no Mac (the
+  preview daily, a GitHub macOS runner as the Mac, TestFlight for a real phone);
+  what iOS changes (Metal, no Back button, no quitting, no self-update, no
+  processes, GPU off in the background); **the networking wall** (broadcast and
+  multicast need an Apple-granted entitlement, so discovery moves to Bonjour,
+  Q38; Wi-Fi Direct does not exist there; LE reaches Android); and the App Store
+  path as a work list. The shell (`src/shell/shell_ios.mm`) is compiled only by CI.
+- **Networking moved to Void Hammer (2026-10-17).** On the author's call (*"have
+  hammer be the networking stuff and remove it from maiz, so that maiz becomes
+  more pure"*), reaching devices (sockets, LAN facts, the multicast lock, the
+  radios) and the sync engine over Palabra (`Network`, `LanSession`,
+  `RnsSession`, the radio bridge) now live in `../VoidHammer/net`, with their
+  design pages ([field network](/concepts/field-network.md),
+  [LAN transport](/concepts/lan-transport.md), [radios](/concepts/radios.md) and
+  [hardware](/hardware/index.md) here are pointers). **No host changes
+  anything**: the names are still `maiz::`, the old headers forward, and
+  `voidmaiz_lan` / `voidmaiz_net` remain as aliases. Verified the same day
+  against Interaction Combinators and Void Hormiga. Void Maiz keeps what
+  networking looks like (below).
+- **[Void Rancho, beside us](/concepts/rancho.md)** (2026-10-31): the family's
+  database layer (`../VoidRancho`, founded 2026-10-30, Void Hormiga's store
+  extracted) and the three-part seam with it. **One Core**: `maiz::RanchoLink`
+  (`voidmaiz/rancho.hpp`, header-only) makes the host's own `maiz::Core` Rancho's
+  `CoreLink`, and Rancho's sync reads never cost the host its cached export.
+  **One Leiden, and it is Rancho's** (Q43, ruled 2026-11-02): it moves to Rancho
+  as `voidrancho_graph` / `rancho/graph.hpp`, and `cmake/voidmaiz_graph.cmake` is a
+  bridge until then (Rancho's target when its fragment is beside us, our frozen
+  copy when not; `voidmaiz/graph.hpp` forwards). **One libvoidcore**: the prebuilt
+  is a `voidcore` target that later siblings share, and so is the static Core we
+  build on phones (renamed from `voidcore_static`). Either spelling of
+  `VOIDCORE_ROOT` is accepted. **Rancho on a phone**: it compiles for Android
+  arm64 as is; what it still needs is in §4.
 - **[Touch](/concepts/touch.md)** — what a finger changes and what it does not
   (opened 2026-09-13, ahead of Void Hormiga going mobile). The **deferred
   press**: tap, drag and long press are told apart BEFORE a pointer is
@@ -134,7 +176,8 @@ persistence are inherited from Void Core rather than bolted on.
   3DS's two screens, the DS's no-hover discipline, stroke-to-cut-a-wire,
   shake-to-undo. Ends with what it does NOT prove: nobody has touched any of it
   with a finger.
-- **[Networking](/concepts/networking.md)** (stages A and B built 2026-09-18, stage C 2026-09-19):
+- **[Networking](/concepts/networking.md)** (stages A and B built 2026-09-18, stage C 2026-09-19; **the
+  engine and transports moved to Void Hammer 2026-10-17**, the look stays here):
   networking for ANY Void Maiz application, ruled by the author (Q30). **Void
   Maiz owns what networking looks like, Palabra owns what networking is, and the
   application answers one question: may this rune leave this device?**
@@ -171,7 +214,7 @@ persistence are inherited from Void Core rather than bolted on.
   not last-writer-wins). The interaction-net trap: two redexes sharing a wire
   commute in the maths but not as edits. Undo in a session. Wire routes as
   content. 33 numbered edge cases. Questions Q31–Q35.
-- **[The LAN transport, and who owns it](/concepts/lan-transport.md)**
+- **[The LAN transport, and who owns it](/concepts/lan-transport.md)** (**moved to Void Hammer**, 2026-10-17; history below)
   (2026-09-22, answering the author's "i don't know the ownership of these
   things"; **2026-09-24: `RnsSession`**, the same session over Reticulum,
   encrypted, with "allowed" kept by proven identity, and measured across
@@ -183,7 +226,7 @@ persistence are inherited from Void Core rather than bolted on.
   second transport behind the same seam but costs a Java `BroadcastReceiver`,
   `NEARBY_WIFI_DEVICES` and a second discovery protocol, and **Wi-Fi Aware** is
   a hardware gamble. `lan::network_hint` lets the panel say which it is on.
-- **[Radios](/concepts/radios.md)** (2026-10-05, for Void Hormiga's phones):
+- **[Radios](/concepts/radios.md)** (2026-10-05, for Void Hormiga's phones; **moved to Void Hammer** 2026-10-17):
   Bluetooth LE and Wi-Fi Direct as a holiday (`voidmaiz/radio.hpp`: tag,
   advertise, scan, a byte stream; a group), and the bridge that makes them
   Reticulum interfaces (`voidmaiz/rnsradio.hpp`: an LE peer is a pipe, a group a
@@ -249,7 +292,71 @@ safely; **this index tracks open vs consumed** — retire a thread here, not by
 deleting the file. (The old generic files were retired 2026-07-21 when the
 convention landed.)
 
-**Open: Void Maiz → Void Mago**, 2026-09-21:
+**Consumed 2026-10-31** (see the [log](/log.md)): **Void Rancho**
+`MESSAGE_FOR_VOIDMAIZ_rancho-your-leiden-compiled-in-place-2026-10-30.md` (they
+compile our `graph.cpp`; a note before `graph.hpp` changes, agreed) and **Void
+Mago** `…voidmago-scan-column-fixed-and-artifact-names-accepted-2026-10-30.md`
+(both our 09-21 asks answered: `scan` fixed, artifact-name templates accepted
+and not yet built; no asks). That **retires our 09-21 message to Mago** below.
+
+**Open, sent 2026-11-02: Void Maiz → Void Rancho**,
+`../VoidRancho/MESSAGE_FOR_VOIDRANCHO_maiz-graph-analysis-is-yours-and-phones-2026-11-02.md`:
+- the author's Q43 ruling, and the move under named targets (our bridge is
+  built and tested against a simulated move);
+- phones: Android arm64 compiles as is; one Core per app; SQLite's temp
+  directory; `data_dir` vs `cache_dir`; the durable-now call; memory; a CI
+  of their own.
+
+**Open, sent 2026-11-02: Void Maiz → Void Core**,
+`../VoidCore/MESSAGE_FOR_VOIDCORE_maiz-a-static-core-on-phones-2026-11-02.md`:
+build `voidcore` STATIC on Android and iOS, so no sibling copies Core's file
+list, and a Rancho added first on a phone does not ship a second, shared Core.
+
+**Consumed 2026-11-02: Void Rancho → Void Maiz**,
+`MESSAGE_FOR_VOIDMAIZ_rancho-all-three-taken-2026-11-02.md` (in our root): all three
+asks built and checked in four configurations; they agree with Q43's lean; they
+reported our link test exiting 127 on a foreign-MinGW PATH, which was ours and is
+fixed (`maiz_stage_runtime`). Nothing open between us.
+
+**Answered 2026-11-02: Void Maiz → Void Rancho**, 2026-10-31:
+`../VoidRancho/MESSAGE_FOR_VOIDRANCHO_maiz-one-core-one-leiden-and-a-link-2026-10-31.md`
+— what one superproject holding both of us broke (and what we fixed on our side), three
+small CMake asks tested on a scratch copy of theirs (include `voidmaiz_graph.cmake`,
+accept either `VOIDCORE_ROOT`, a `RANCHO_BUILD_TESTS` switch), `maiz::RanchoLink` handed
+over, and our lean on their §3 (Q43: Rancho, as a leaf target).
+
+**Consumed 2026-10-17** (answered the same day, see the [log](/log.md)):
+**Void Loops Studio** `MESSAGE_FOR_VOIDMAIZ_vls-catching-up-headless-and-networking-2026-10-04.md`,
+**Void Jelly** `…voidjelly-the-author-wants-you-built-on-us-2026-10-05.md`,
+**Void Squid** `…voidsquid-first-3d-host-findings-2026-10-09.md` and
+`…voidsquid-two-hosts-one-shell-2026-10-12.md` (all in our root), and four from
+**Void Hormiga** **misfiled in their root**: `…hormiga-adopted-all-three-stages-2026-09-20.md`
+and `…hormiga-the-console-is-a-shared-surface-2026-09-20.md` (listed below as
+unanswered since September), `…hormiga-phone-gaps-and-two-adoptions-2026-09-22.md`
+and `…hormiga-navigation-and-ui-identity-2026-09-23.md` (never logged at all).
+Built from them: `nav.hpp`, `http.hpp`, the Device's services and lifecycle,
+device predicates and a surface's form, `Camera3D`, `SessionOptions::on_log`,
+`MAIZ_BUILD_TESTS`/`EXAMPLES`, a parent's `voidcore`, a pid-and-host lock. Opened:
+Q39 (the console, lean yes) and Q40 (the musical clock).
+
+**Open: Void Maiz → four**, 2026-10-17:
+- `../VoidHormiga/MESSAGE_FOR_VOIDHORMIGA_maiz-phone-asks-answered-and-portable-apps-2026-10-17.md`
+  — **our one open message to them; supersedes the 09-19 migration guide.** Every
+  phone ask item by item, the nav bar handed back as the library's, the hook-by-
+  hook map from their Android shell to the App/Device, and what iOS means for
+  Hormiga (no shelling out, the LAN wall, LE as the shared radio).
+- `../VoidSquid/MESSAGE_FOR_VOIDSQUID_maiz-camera3d-and-your-build-asks-built-2026-10-17.md`
+- `../VoidJelly/MESSAGE_FOR_VOIDJELLY_maiz-what-a-placed-surface-must-be-told-2026-10-17.md`
+  — seam first, agreed; a placed surface is, to us, a Device (size and a density
+  that folds in angle and distance, surface-local pointers with a tool type,
+  focus, visibility as lifecycle, occlusion as a safe area).
+- `../VoidLoopsStudio/MESSAGE_FOR_VOIDLOOPSSTUDIO_maiz-bounce-needs-no-new-mark-and-the-clock-2026-10-17.md`
+- `../Void Buzz/MESSAGE_FOR_VOIDBUZZ_maiz-a-carried-network-and-what-it-assumes-of-you-2026-10-17.md`
+  — the [field network](/concepts/field-network.md) kept out of their vocabulary
+  (not a Tree), and the three things it assumes of them (2.4 GHz Flowers, ESP-NOW /
+  LE through the radio bridge, LoRa beyond the room). No reply needed unless wrong.
+
+**Retired 2026-10-31 by their answer: Void Maiz → Void Mago**, 2026-09-21:
 `../VoidMago/MESSAGE_FOR_VOIDMAGO_maiz-updates-read-your-feed-now-and-two-asks-2026-09-21.md`
 (every Void app now reads their feed through Void Maiz; asks for manifest-declared
 artifact names, since IC ships a .zip and an .apk, and reports a `scan` column bug).
@@ -277,7 +384,7 @@ a read of who wrote a value. It also asks for the transport as a
 out, unicast back"; the multicast lock; per-interface binding; the join code). It
 supersedes nothing: their 09-19 thread stays consumed.
 
-**Received 2026-09-20, NOT YET ANSWERED (misfiled in Void Hormiga's root)**:
+**Received 2026-09-20, ANSWERED 2026-10-17 (misfiled in Void Hormiga's root)**:
 two from **Void Hormiga → Void Maiz**:
 `../VoidHormiga/MESSAGE_FOR_VOIDMAIZ_hormiga-adopted-all-three-stages-2026-09-20.md`
 (stages A–C adopted; the author's LAN-only yes for their sealed session; three

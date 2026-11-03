@@ -129,7 +129,21 @@ void touch_scroll(TouchScrollState& st, float dp = 1.0f, float slop_dp = 8.0f);
  *     finger cannot scroll vertically, so a list never zooms. ImGui hears
  *     nothing; `zoom_scale` is this frame's factor about `x`,`y` (the press).
  *   - FLING: a press-then-drag (a canvas pan) released fast. `vx`,`vy` in
- *     px/s, for a canvas to coast on. Lists glide on their own, as before. */
+ *     px/s, for a canvas to coast on. Lists glide on their own, as before.
+ *
+ * ── BACK FROM THE EDGE (2026-10-17, for iOS) ────────────────────────────────
+ * iOS has no Back button. Its "back" is a swipe in from the screen's left edge,
+ * and an app without it feels broken there. Android's own gesture navigation
+ * does the same thing in the system and delivers a Back key, so the gate does
+ * it only when a shell sets `edge_back_dp` (the iOS shell does; the iOS preview
+ * does; Android leaves it 0). A finger landing that close to the left edge is
+ * an ordinary touch until it moves; if it then moves RIGHT more than it moves
+ * up or down, it is the back swipe, and ImGui hears nothing more of it (a tap
+ * on a chevron at the edge still taps). While it is in flight `edge_progress`
+ * runs 0..1 across the screen for a screen that wants to slide; on release
+ * past `edge_commit` of the width, or flung right, `gestures.back` fires for
+ * one frame. `maiz::back_pressed()` (nav.hpp) reads it, so a host whose
+ * navigation already answers Android's Back answers this with no new code. */
 struct TouchGate {
     // settings
     float slop_dp = 8.0f;
@@ -139,6 +153,8 @@ struct TouchGate {
     float double_tap_slop_dp = 28.0f;
     float quick_zoom_dp = 160.0f; // a drag this long doubles (down) or halves (up) the zoom
     float fling_min_dp_s = 260.0f;
+    float edge_back_dp = 0.0f;    // 0 = off; the iOS shell sets ~20 (see above)
+    float edge_commit = 0.35f;    // of the screen's width, to count as "back" on release
     // this frame's pinch (valid while `active`): scale and pan since last frame
     struct Pinch {
         bool active = false;
@@ -156,12 +172,14 @@ struct TouchGate {
         bool fling = false;
         float vx = 0, vy = 0;      // fling velocity, px/s
         float x = 0, y = 0;        // where: the press, the tap, the two fingers' midpoint
+        bool back = false;         // an edge swipe was released past the commit (iOS)
     } gestures;
+    float edge_progress = 0.0f;   // 0..1 while an edge swipe is in flight, else 0
     bool scrolling = false; // a finger (or a glide) is scrolling
     float px = -FLT_MAX, py = -FLT_MAX; // where ImGui was last told the pointer is
 
     // ── internal ──
-    enum class Mode { Idle, Pending, Pressed, Scrolling, Pinching, Ignoring, QuickZoom };
+    enum class Mode { Idle, Pending, Pressed, Scrolling, Pinching, Ignoring, QuickZoom, EdgeBack };
     Gestures next;                   // gathered from events, published by the frame
     double last_tap_t = -1e9;        // event time of the last tap, for a double tap
     float last_tap_x = 0, last_tap_y = 0;
@@ -179,6 +197,7 @@ struct TouchGate {
     double t0 = 0.0, down_at = 0.0; // the event's time; the frame clock at the touch
     float px_per_dp = 1.0f;          // set each frame: the slop in this device's pixels
     bool stopped_glide = false;      // this finger stopped a glide: it is not a tap
+    bool at_edge = false;            // this finger landed in the edge-back strip
     bool claimed = false;            // a press that became a drag of what is under it
     bool gliding = false;
     unsigned window = 0;             // ImGuiID being scrolled

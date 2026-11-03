@@ -21,7 +21,9 @@ name: ci
 
 on:
   push:
-    branches: [main]
+    # `ios` is the branch the iOS shell is developed on: a push there runs the
+    # Simulator job (below) without touching main.
+    branches: [main, ios]
   pull_request:
   workflow_dispatch:
 
@@ -57,6 +59,11 @@ jobs:
           # before — that is the claim, and the step below reports which
           # configuration this run actually exercised.
           git clone --depth 1 https://github.com/migriv24/VoidPalabra.git VoidPalabra || true
+          # OPTIONAL: networking moved to Void Hammer on 2026-10-17 (reaching
+          # devices, the sync engine over Palabra). It has no public repository
+          # yet; until it does, this clone fails and the run builds Void Maiz
+          # without networking, which the report step below says out loud.
+          git clone --depth 1 https://github.com/migriv24/VoidHammer.git VoidHammer || true
 
       # GLFW 3.4 builds BOTH an X11 and a Wayland backend on Linux by default
       # (vendor/glfw/CMakeLists.txt gates them on UNIX;NOT APPLE), so configure
@@ -93,10 +100,14 @@ jobs:
       - name: Report the networking configuration
         shell: bash
         run: |
-          if ls VoidMaiz/build/*voidmaiz_net* VoidMaiz/build/*/*voidmaiz_net* >/dev/null 2>&1; then
-            echo "::notice::voidmaiz_net built — net_smoke runs in this job"
+          # voidmaiz_net is an alias since networking moved to Void Hammer; the
+          # library that proves the engine built is voidhammer_net.
+          if find VoidMaiz/build -name '*voidhammer_net*' \( -name '*.a' -o -name '*.lib' \) | grep -q .; then
+            echo "::notice::voidhammer_net built — net_smoke and the other networking tests run in this job"
+          elif [ ! -d VoidHammer ]; then
+            echo "::warning::Void Hammer not cloned (no public repository yet) — networking is not built or tested in this job"
           else
-            echo "::warning::voidmaiz_net NOT built (Void Palabra absent or without sync.hpp) — networking untested in this job"
+            echo "::warning::voidhammer_net NOT built (Void Palabra absent or without sync.hpp) — networking untested in this job"
           fi
 
       # The suite is entirely headless — no test target links voidmaiz_view.
@@ -118,3 +129,88 @@ jobs:
         working-directory: VoidMaiz/build
         continue-on-error: true
         run: ctest --output-on-failure -C Release -R reduce_conformance
+
+  # ── iOS, from a machine with no Mac (2026-10-17) ───────────────────────────
+  #
+  # Nobody in the family owns a Mac, and Void Maiz's iOS shell
+  # (src/shell/shell_ios.mm) was written on Windows. This runner is the Mac. It
+  # proves three things, in order of how much they are worth:
+  #   1. the library, the shell and the example COMPILE for iOS (device and
+  #      Simulator; arm64 both);
+  #   2. the app LAUNCHES in the iOS Simulator and is still running 20 s later
+  #      (no crash at start, no crash on the first frames);
+  #   3. a SCREENSHOT of it, uploaded as an artifact, which is how a person on
+  #      Windows looks at an iOS build.
+  # It does not prove a finger works (the Simulator gets no touches here), nor
+  # anything about a real device, signing, or the App Store. See
+  # okf/concepts/ios.md.
+  ios:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: VoidMaiz
+
+      # No Void Palabra: networking is not on iOS yet (UDP broadcast there needs
+      # an entitlement Apple must grant; see okf/concepts/ios.md).
+      - name: Check out the siblings
+        run: |
+          git clone --depth 1 https://github.com/migriv24/void-core.git VoidCore
+          git clone --depth 1 https://github.com/migriv24/VoidAllomone.git VoidAllomone
+
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          cmake --version
+
+      - name: Build for a device (arm64, unsigned)
+        run: |
+          cmake -S VoidMaiz -B build-ios -G Xcode -DCMAKE_SYSTEM_NAME=iOS             -DCMAKE_OSX_SYSROOT=iphoneos -DCMAKE_OSX_ARCHITECTURES=arm64             -DCMAKE_OSX_DEPLOYMENT_TARGET=16.0 -DMAIZ_BUILD_TESTS=OFF
+          cmake --build build-ios --config Release --target maiz_portable --             CODE_SIGNING_ALLOWED=NO -quiet
+
+      - name: Build for the Simulator
+        run: |
+          cmake -S VoidMaiz -B build-sim -G Xcode -DCMAKE_SYSTEM_NAME=iOS             -DCMAKE_OSX_SYSROOT=iphonesimulator -DCMAKE_OSX_ARCHITECTURES=arm64             -DCMAKE_OSX_DEPLOYMENT_TARGET=16.0 -DMAIZ_BUILD_TESTS=OFF
+          cmake --build build-sim --config Debug --target maiz_portable --             CODE_SIGNING_ALLOWED=NO -quiet
+          APP=$(find build-sim -name maiz_portable.app -type d | head -1)
+          echo "APP=$APP" >> "$GITHUB_ENV"
+          codesign --force --sign - "$APP"   # ad hoc: what the Simulator needs to launch it
+          plutil -p "$APP/Info.plist" | head -20
+
+      - name: Run it in the Simulator
+        run: |
+          # the newest available iPhone, whatever this image's Xcode ships
+          UDID=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          d = json.load(sys.stdin)["devices"]
+          phones = [x for rt, xs in sorted(d.items()) if "iOS" in rt for x in xs if x["name"].startswith("iPhone")]
+          print(phones[-1]["udid"])')
+          echo "UDID=$UDID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl install "$UDID" "$APP"
+          xcrun simctl launch "$UDID" org.voidmaiz.portable
+          sleep 20
+          mkdir -p ios-out
+          xcrun simctl io "$UDID" screenshot ios-out/simulator.png
+          xcrun simctl spawn "$UDID" log show --last 3m --style compact             --predicate 'process == "maiz_portable"' > ios-out/app.log || true
+          # still running = it survived its start and its first frames
+          xcrun simctl spawn "$UDID" launchctl list | grep org.voidmaiz.portable             || { echo "::error::maiz_portable is not running 20 s after launch"; tail -50 ios-out/app.log; exit 1; }
+
+      - name: Background and back (the save path)
+        run: |
+          xcrun simctl launch "$UDID" com.apple.Preferences   # puts our app in the background
+          sleep 5
+          xcrun simctl launch "$UDID" org.voidmaiz.portable
+          sleep 5
+          xcrun simctl io "$UDID" screenshot ios-out/after-background.png
+          DATA=$(xcrun simctl get_app_container "$UDID" org.voidmaiz.portable data)
+          ls -la "$DATA/Library/Application Support" || true
+          test -f "$DATA/Library/Application Support/portable.state.json"             || { echo "::error::no state document after going to the background"; exit 1; }
+
+      - name: Upload what the Simulator showed
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-simulator
+          path: ios-out/

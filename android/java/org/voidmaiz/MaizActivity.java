@@ -314,6 +314,61 @@ public class MaizActivity extends NativeActivity {
         for (int r; (r = in.read(buf)) > 0;) out.write(buf, 0, r);
     }
 
+    // ── the Device's small services (voidmaiz/device.hpp, 2026-10-17) ─────────
+    /* Void Hormiga asked for these by name (2026-09-22): "tap to call",
+     * previewing a newsletter in the browser, sending something on. Each is
+     * one Intent; the decisions (which URLs are allowed) are made in C++. */
+
+    public boolean maizOpenUrl(final String url) {
+        runOnUiThread(() -> {
+            try {
+                Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(i);
+            } catch (Exception ignored) { // no app for that scheme: nothing happens, as on any phone
+            }
+        });
+        return true;
+    }
+
+    /* Text and links. A FILE cannot be shared from here yet: since Android 7 a
+     * file must leave as a content:// URI from a FileProvider, and this APK has
+     * no AndroidX to borrow one from (native code is told false). */
+    public boolean maizShare(final String text, final String subject) {
+        runOnUiThread(() -> {
+            Intent i = new Intent(Intent.ACTION_SEND);
+            i.setType("text/plain");
+            i.putExtra(Intent.EXTRA_TEXT, text);
+            if (subject != null && !subject.isEmpty()) i.putExtra(Intent.EXTRA_SUBJECT, subject);
+            try {
+                startActivity(Intent.createChooser(i, null));
+            } catch (Exception ignored) {
+            }
+        });
+        return true;
+    }
+
+    /* Haptic kinds are maiz::Haptic's ordinals: tap 0, select 1, success 2,
+     * warning 3, error 4. performHapticFeedback needs no permission. */
+    public void maizHaptic(final int kind) {
+        runOnUiThread(() -> {
+            View v = getWindow().getDecorView();
+            int c = android.view.HapticFeedbackConstants.VIRTUAL_KEY;
+            if (Build.VERSION.SDK_INT >= 30) {
+                if (kind == 2) c = android.view.HapticFeedbackConstants.CONFIRM;
+                else if (kind >= 3) c = android.view.HapticFeedbackConstants.REJECT;
+            }
+            if (kind == 1) c = android.view.HapticFeedbackConstants.CLOCK_TICK;
+            v.performHapticFeedback(c);
+        });
+    }
+
+    /* Back at the root of the app: what Android 12+ does for every app, go to
+     * the background without finishing (so the next launch is warm). */
+    public void maizMoveToBack() {
+        runOnUiThread(() -> moveTaskToBack(true));
+    }
+
     // ── where this device is (voidmaiz/location.hpp) ─────────────────────────
     /* The permission is asked ONLY from maizLocationRequest, which native code
      * calls from a person's tap; nothing here asks at start-up. Updates run on

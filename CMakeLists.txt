@@ -1,5 +1,15 @@
 cmake_minimum_required(VERSION 3.20)
 project(voidmaiz CXX C) # C for the vendored cJSON
+# iOS (2026-10-17): the shell and ImGui's Metal backend are Objective-C++.
+if(IOS)
+  enable_language(OBJC OBJCXX)
+endif()
+
+# A host that builds us as a subdirectory (Void Squid, 2026-10-09) sees every
+# add_test we register in ITS ctest, as "Not Run", and our test names collide
+# with the ones a host would naturally choose. Both default ON, as before.
+option(MAIZ_BUILD_TESTS "Build and register Void Maiz's tests" ON)
+option(MAIZ_BUILD_EXAMPLES "Build Void Maiz's example programs" ON)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -12,12 +22,43 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(VOIDCORE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../VoidCore/core" CACHE PATH
     "Path to Void Core's core/ directory (include/voidcore.h + build/)")
 
-if(NOT EXISTS "${VOIDCORE_ROOT}/include/voidcore.h")
+# EITHER SPELLING OF THE ROOT (2026-10-31). The family disagrees about what
+# VOIDCORE_ROOT names: we and Void Squid mean Core's `core/` directory, Void
+# Rancho means the repository. It is one cache variable, so in a superproject
+# that adds both (Void Hormiga, once it moves its store to Rancho) the first
+# definition wins and the other sibling's check fails before it can look for a
+# parent's `voidcore` target. We accept both, as a normal variable that shadows
+# the cache in this directory only, so nobody else's reading changes.
+if(NOT EXISTS "${VOIDCORE_ROOT}/include/voidcore.h"
+   AND EXISTS "${VOIDCORE_ROOT}/core/include/voidcore.h")
+  set(VOIDCORE_ROOT "${VOIDCORE_ROOT}/core")
+endif()
+# A parent's `voidcore` target answers the question this check asks.
+if(NOT TARGET voidcore AND NOT EXISTS "${VOIDCORE_ROOT}/include/voidcore.h")
   message(FATAL_ERROR "voidcore.h not found under VOIDCORE_ROOT=${VOIDCORE_ROOT}")
 endif()
 
-if(ANDROID)
-  add_library(voidcore_static STATIC
+# THREE WAYS TO GET A CORE (2026-10-17):
+#  1. A parent already made a `voidcore` target (Void Squid supplies one Core to
+#     both us and Void Jelly, so one process does not carry two copies of one
+#     library's symbols). We use it and look for nothing.
+#  2. A phone (Android, iOS): compiled from source into a static library. There
+#     are no prebuilts for those substrates, and an iOS app links statically.
+#  3. A desktop: the sibling repo's prebuilt shared library.
+set(MAIZ_CORE_STATIC OFF)
+if(TARGET voidcore)
+  set(VOIDCORE_LIBRARY voidcore)
+  get_target_property(_maiz_core_type voidcore TYPE)
+  if(_maiz_core_type STREQUAL "STATIC_LIBRARY")
+    set(MAIZ_CORE_STATIC ON)
+  endif()
+elseif(ANDROID OR IOS)
+  # Named `voidcore` (2026-11-02), as on desktop: a sibling added after us (Void
+  # Rancho) checks `if(NOT TARGET voidcore)` before building its own, and under
+  # the old name voidcore_static it could not see this one, so a phone app got
+  # two Cores. voidcore_static stays as an alias for anything that spelled it.
+  set(MAIZ_CORE_STATIC ON)
+  add_library(voidcore STATIC
     "${VOIDCORE_ROOT}/vendor/cJSON.c"
     "${VOIDCORE_ROOT}/src/util/ids.c"
     "${VOIDCORE_ROOT}/src/util/log.c"
@@ -49,11 +90,12 @@ if(ANDROID)
     "${VOIDCORE_ROOT}/src/scripts/vs_expr.c"
     "${VOIDCORE_ROOT}/src/vc_manager.c"
   )
-  target_include_directories(voidcore_static
+  target_include_directories(voidcore
     PUBLIC  "${VOIDCORE_ROOT}/include"
     PRIVATE "${VOIDCORE_ROOT}/src" "${VOIDCORE_ROOT}/vendor")
-  target_compile_definitions(voidcore_static PRIVATE CJSON_HIDE_SYMBOLS)
-  set(VOIDCORE_LIBRARY voidcore_static)
+  target_compile_definitions(voidcore PRIVATE CJSON_HIDE_SYMBOLS)
+  add_library(voidcore_static ALIAS voidcore)
+  set(VOIDCORE_LIBRARY voidcore)
 else()
   # A MULTI-CONFIG GENERATOR PUTS IT ONE FOLDER DEEPER (2026-09-20). Visual
   # Studio builds into build/Release and build/bin/Release, so a host configured
@@ -74,6 +116,29 @@ else()
           "${VOIDCORE_ROOT}/build/bin/Release" "${VOIDCORE_ROOT}/build/Release"
           "${VOIDCORE_ROOT}/build/bin/Debug" "${VOIDCORE_ROOT}/build/Debug"
     NO_DEFAULT_PATH)
+
+  # THE PREBUILT IS A TARGET, SO A LATER SIBLING SHARES IT (2026-10-31). Linked
+  # as a bare file path, it was invisible to `if(TARGET voidcore)`: a sibling
+  # added after us with that guard (Void Jelly, Void Rancho) then built a SECOND
+  # libvoidcore from source, with the same file name, and the process loaded
+  # whichever the loader met first. Void Squid fixed it for itself by wrapping
+  # the file before adding us; this does the same for every host. One process,
+  # one Core.
+  if(WIN32 AND VOIDCORE_DLL)
+    add_library(voidcore SHARED IMPORTED GLOBAL)
+    set_target_properties(voidcore PROPERTIES
+      IMPORTED_LOCATION "${VOIDCORE_DLL}"
+      IMPORTED_IMPLIB   "${VOIDCORE_LIBRARY}")
+  elseif(NOT WIN32)
+    add_library(voidcore SHARED IMPORTED GLOBAL)
+    set_target_properties(voidcore PROPERTIES IMPORTED_LOCATION "${VOIDCORE_LIBRARY}")
+  endif()
+  if(TARGET voidcore)
+    set_target_properties(voidcore PROPERTIES
+      INTERFACE_INCLUDE_DIRECTORIES "${VOIDCORE_ROOT}/include"
+      INTERFACE_COMPILE_DEFINITIONS VC_DLL)
+    set(VOIDCORE_LIBRARY voidcore)
+  endif()
 endif()
 
 # ── Void Allomone (the language and the merge) ───────────────────────────────
@@ -110,7 +175,6 @@ add_library(voidmaiz STATIC
   src/embed/embed.cpp
   src/project/project.cpp
   src/project/measures.cpp
-  src/graph/graph.cpp
   src/gesture/gesture.cpp
   src/gesture/wires.cpp
   src/gesture/rules.cpp
@@ -118,7 +182,6 @@ add_library(voidmaiz STATIC
   src/input/textinput.cpp
   src/input/documents.cpp   # the system picker / save dialog (Android; false elsewhere)
   src/input/location.cpp    # where the device is (Android; a stand-in elsewhere)
-  src/input/radio.cpp       # Bluetooth LE and Wi-Fi Direct (Android; a loopback stand-in in voidmaiz_lan)
   src/touch/touch.cpp
   src/presence/presence.cpp
   src/presence/claims.cpp
@@ -133,36 +196,31 @@ target_include_directories(voidmaiz
   PRIVATE vendor
 )
 target_link_libraries(voidmaiz PUBLIC voidallomone)
+# Graph analysis is Void Rancho's (Q43, 2026-11-02); cmake/voidmaiz_graph.cmake
+# bridges to Rancho's leaf target when Rancho is beside us, and to our frozen
+# copy when it is not. VOIDRANCHO_ROOT is read there, so it is defined here.
+set(VOIDRANCHO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../VoidRancho" CACHE PATH "Path to the Void Rancho repo")
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/voidmaiz_graph.cmake")
+target_link_libraries(voidmaiz PUBLIC voidmaiz_graph)
 # The keyboard holiday's Android crossing (okf/concepts/text-input.md): JNI to
 # org.voidmaiz.MaizActivity. UI-free, so it lives here and not in the view.
 if(ANDROID)
   target_sources(voidmaiz PRIVATE src/input/textinput_android.cpp)
   target_link_libraries(voidmaiz PUBLIC android log)
 endif()
+# The process-wide platform services (voidmaiz/app.hpp's Device, minus the
+# frame loop): ImGui-free, so a headless test can install a fake one.
+target_sources(voidmaiz PRIVATE src/app/device.cpp)
 # VC_DLL: consuming the core as a shared library on Windows (dllimport) —
 # not on Android, where the core is compiled in statically.
 # CJSON_HIDE_SYMBOLS: mirror the core — cJSON stays internal.
 target_compile_definitions(voidmaiz PRIVATE CJSON_HIDE_SYMBOLS)
-if(NOT ANDROID)
+if(NOT MAIZ_CORE_STATIC)
   target_compile_definitions(voidmaiz PUBLIC VC_DLL)
 endif()
 target_link_libraries(voidmaiz PUBLIC "${VOIDCORE_LIBRARY}")
 if(NOT MSVC)
   target_compile_options(voidmaiz PRIVATE -Wall -Wextra)
-endif()
-
-# Platform facts for LAN discovery (okf/concepts/collaborative-canvas.md, E24-E30):
-# addresses, the join code, and Android's Wi-Fi multicast lock. Opens no socket
-# (the transport is Void Palabra's). Its own target so an application that never
-# networks links no socket library.
-add_library(voidmaiz_lan STATIC src/lan/lan.cpp src/lan/radio_loopback.cpp)
-target_include_directories(voidmaiz_lan PUBLIC include)
-target_compile_features(voidmaiz_lan PUBLIC cxx_std_20)
-if(WIN32)
-  target_link_libraries(voidmaiz_lan PUBLIC iphlpapi ws2_32)
-endif()
-if(NOT MSVC)
-  target_compile_options(voidmaiz_lan PRIVATE -Wall -Wextra)
 endif()
 
 # An application updating itself (okf/concepts/updates.md): asking permission,
@@ -214,46 +272,73 @@ if(NOT MSVC)
   target_compile_options(voidmaiz_headless PRIVATE -Wall -Wextra)
 endif()
 
-# ── Networking, stage C: Void Palabra's sync (optional) ──────────────────────
-# okf/concepts/networking.md. The ONLY target that links Void Palabra, and it is
-# built only when the sibling repo is present: an application that never
-# networks never needs Palabra checked out, and the build proves it.
+# ── Networking: Void Hammer's since 2026-10-17 ───────────────────────────────
+# Reaching devices (sockets, LAN facts, the multicast lock, the radios) and the
+# sync engine over Void Palabra (Network, LanSession, RnsSession, the radio
+# bridge) MOVED to Void Hammer (../VoidHammer/net), on the author's call: "have
+# hammer be the networking stuff and remove it from maiz, so that maiz becomes
+# more pure." Void Maiz keeps what networking LOOKS like (presence, claims,
+# marks, the session panels: presence.hpp, claims.hpp, netview.hpp, wires.hpp).
 #
-# Palabra is embedded the way it asks to be (its CMakeLists §"Consumed two ways")
-# — as a target, never a copied source list; the one list we did copy (Void
-# Core's, for Android) went months without a file. VENDOR_CJSON=OFF because we
-# already compile cJSON: one copy per process.
+# NOTHING A HOST WROTE CHANGES. The code moved with its maiz:: names; the old
+# headers (voidmaiz/lan.hpp, lanlink.hpp, net.hpp, rnslink.hpp, rnsradio.hpp,
+# radio.hpp) forward to voidhammer/*; and the old targets are kept below as
+# aliases: an extraction that breaks its adopters' builds has failed (the rule
+# the Allomone extraction set, 2026-08-29). Measured the day of the move:
+# Interaction Combinators and Void Hormiga built and passed exactly as before.
+#
+# Both siblings are OPTIONAL, as Palabra always was: without ../VoidHammer (or
+# without Palabra, for the sync engine) the library, its UI and its tests build,
+# and networking is simply absent, said in a message rather than failed.
 set(VOIDPALABRA_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../VoidPalabra" CACHE PATH
-    "Path to the Void Palabra repository (optional: enables voidmaiz_net)")
+    "Path to the Void Palabra repository (optional: enables the sync engine)")
+set(VOIDHAMMER_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../VoidHammer" CACHE PATH
+    "Path to the Void Hammer repository (optional: enables networking)")
 # Reticulum (2026-09-23: "let's just use reticulum for everything!"): Palabra's
-# optional companion voidpalabra_reticulum carries it, and voidmaiz/rnslink.hpp
-# (RnsSession) is LanSession's job done over it. ON everywhere: the vendored
-# microReticulum cross-compiles for Android arm64 with the NDK unchanged
-# (measured 2026-09-24).
-option(MAIZ_RETICULUM "voidmaiz_net carries RnsSession (Reticulum, through Void Palabra)" ON)
-if(EXISTS "${VOIDPALABRA_ROOT}/include/voidpalabra/sync.hpp")
+# optional companion voidpalabra_reticulum carries it, and RnsSession is
+# LanSession's job done over it. ON everywhere: the vendored microReticulum
+# cross-compiles for Android arm64 with the NDK unchanged (measured 2026-09-24).
+option(MAIZ_RETICULUM "the sync engine carries RnsSession (Reticulum, through Void Palabra)" ON)
+# Palabra is embedded the way it asks to be (its CMakeLists §"Consumed two
+# ways"): as a target, never a copied source list. VENDOR_CJSON=OFF because we
+# already compile cJSON (byte-identical to Palabra's and Core's, 1.7.18): one
+# copy per process. A parent that already added Palabra is respected.
+if(EXISTS "${VOIDPALABRA_ROOT}/include/voidpalabra/sync.hpp" AND NOT TARGET voidpalabra)
   set(VOIDPALABRA_VENDOR_CJSON OFF CACHE BOOL "" FORCE)
   set(VOIDPALABRA_RETICULUM ${MAIZ_RETICULUM} CACHE BOOL "" FORCE)
   add_subdirectory("${VOIDPALABRA_ROOT}" voidpalabra)
-  add_library(voidmaiz_net STATIC src/net/net.cpp src/net/lanlink.cpp)
-  target_include_directories(voidmaiz_net PUBLIC include PRIVATE vendor)
-  target_link_libraries(voidmaiz_net PUBLIC voidmaiz voidmaiz_lan voidpalabra::voidpalabra)
-  target_compile_definitions(voidmaiz_net PRIVATE CJSON_HIDE_SYMBOLS)
-  if(MAIZ_RETICULUM AND TARGET voidpalabra_reticulum)
-    target_sources(voidmaiz_net PRIVATE src/net/rnslink.cpp src/net/rnsradio.cpp)
-    target_link_libraries(voidmaiz_net PUBLIC voidpalabra::reticulum)
-    target_compile_definitions(voidmaiz_net PUBLIC VOIDMAIZ_RETICULUM=1)
-    set(VOIDMAIZ_HAVE_RNS ON)
+endif()
+set(VOIDMAIZ_HAVE_NET OFF)
+set(VOIDMAIZ_HAVE_RNS OFF)
+if(EXISTS "${VOIDHAMMER_ROOT}/net/CMakeLists.txt")
+  if(NOT TARGET voidhammer_reach)
+    set(VOIDMAIZ_VENDOR_DIR "${CMAKE_CURRENT_SOURCE_DIR}/vendor")
+    add_subdirectory("${VOIDHAMMER_ROOT}/net" voidhammer_net)
+  endif()
+  # radio.hpp lived in the base library, so the base still carries it: a host
+  # that included it while linking only `voidmaiz` keeps compiling.
+  target_link_libraries(voidmaiz PUBLIC voidhammer_reach)
+  # the old target names, for every host that links them
+  # Each alias must export exactly what the old target did, INCLUDING this
+  # repo's include/ (where the forwarding headers are): Void Hormiga's
+  # hormiga_sync links only voidmaiz_lan and includes voidmaiz/lan.hpp, and the
+  # first version of this alias, which exported only Hammer's include/, broke it
+  # (caught by building Hormiga against the move, 2026-10-17).
+  add_library(voidmaiz_lan INTERFACE)
+  target_include_directories(voidmaiz_lan INTERFACE include)
+  target_link_libraries(voidmaiz_lan INTERFACE voidhammer_reach)
+  if(TARGET voidhammer_net)
+    add_library(voidmaiz_net INTERFACE)
+    target_include_directories(voidmaiz_net INTERFACE include)
+    target_link_libraries(voidmaiz_net INTERFACE voidhammer_net)
+    set(VOIDMAIZ_HAVE_NET ON)
+    set(VOIDMAIZ_HAVE_RNS ${VOIDHAMMER_HAVE_RNS})
   else()
-    set(VOIDMAIZ_HAVE_RNS OFF)
+    message(STATUS "Void Palabra not found at ${VOIDPALABRA_ROOT}: the sync engine (voidmaiz_net) is not built")
   endif()
-  if(NOT MSVC)
-    target_compile_options(voidmaiz_net PRIVATE -Wall -Wextra)
-  endif()
-  set(VOIDMAIZ_HAVE_NET ON)
 else()
-  message(STATUS "Void Palabra not found at ${VOIDPALABRA_ROOT}: voidmaiz_net is not built")
-  set(VOIDMAIZ_HAVE_NET OFF)
+  message(STATUS "Void Hammer not found at ${VOIDHAMMER_ROOT}: networking (voidmaiz_lan, voidmaiz_net, "
+                 "radio.hpp) is not built. It moved there on 2026-10-17; clone it beside this repo.")
 endif()
 
 # ── Vendored UI substrate (Phase 2): Dear ImGui over the platform's GL ──────
@@ -265,11 +350,28 @@ set(VOIDMAIZ_IMGUI_SOURCES
   vendor/imgui/imgui_tables.cpp
   vendor/imgui/imgui_widgets.cpp
   vendor/imgui/imgui_demo.cpp
-  vendor/imgui/backends/imgui_impl_opengl3.cpp
 )
-if(ANDROID)
+if(IOS)
+  # iOS: Metal, not GL. OpenGL ES has been deprecated on iOS since 12 and
+  # Metal is what the platform is built on; ImGui's Metal backend is vendored
+  # from the same v1.92.1-docking tag as the rest. No platform backend: the iOS
+  # shell (src/shell/shell_ios.mm) feeds ImGui itself, through the touch gate.
   add_library(voidmaiz_imgui STATIC
     ${VOIDMAIZ_IMGUI_SOURCES}
+    vendor/imgui/backends/imgui_impl_metal.mm
+  )
+  target_include_directories(voidmaiz_imgui PUBLIC vendor/imgui vendor/imgui/backends)
+  # ARC on the FILE, and as the Xcode setting (2026-11-02). The language-keyed
+  # $<COMPILE_LANGUAGE:OBJCXX> option never reached clang under the Xcode
+  # generator: CI's first iOS build (2026-10-30) compiled shell_ios.mm with
+  # manual reference counting and failed on its __weak references.
+  set_source_files_properties(vendor/imgui/backends/imgui_impl_metal.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
+  set_target_properties(voidmaiz_imgui PROPERTIES XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC YES)
+  target_link_libraries(voidmaiz_imgui PUBLIC "-framework Foundation" "-framework Metal" "-framework MetalKit" "-framework QuartzCore")
+elseif(ANDROID)
+  add_library(voidmaiz_imgui STATIC
+    ${VOIDMAIZ_IMGUI_SOURCES}
+    vendor/imgui/backends/imgui_impl_opengl3.cpp
     vendor/imgui/backends/imgui_impl_android.cpp
   )
   target_include_directories(voidmaiz_imgui PUBLIC vendor/imgui vendor/imgui/backends)
@@ -304,6 +406,7 @@ else()
 
   add_library(voidmaiz_imgui STATIC
     ${VOIDMAIZ_IMGUI_SOURCES}
+    vendor/imgui/backends/imgui_impl_opengl3.cpp
     vendor/imgui/backends/imgui_impl_glfw.cpp
   )
   target_include_directories(voidmaiz_imgui PUBLIC vendor/imgui vendor/imgui/backends)
@@ -325,6 +428,7 @@ add_library(voidmaiz_view STATIC
   src/view/face.cpp
   src/view/inspector.cpp
   src/view/mobile.cpp
+  src/view/nav.cpp
   src/view/netview.cpp
   src/view/textinput.cpp
   src/view/updateview.cpp
@@ -336,10 +440,59 @@ if(NOT MSVC)
   target_compile_options(voidmaiz_view PRIVATE -Wall -Wextra)
 endif()
 
+# ── The portable application (okf/concepts/portable-apps.md) ────────────────
+# A host writes ONE maiz::App and the library owns the shell on every platform:
+# a desktop window (with --device to preview a phone, an iPhone included), an
+# Android NativeActivity, an iOS UIKit + Metal app. Before this, every host
+# wrote its own Android shell (Interaction Combinators 234 lines, Void Hormiga
+# 388, mostly the same lines), and iOS would have doubled that in a second
+# language. `voidmaiz_app` is the shell for THIS platform; link it and define
+# maiz::create_app().
+include(cmake/VoidMaizApp.cmake)
+if(IOS)
+  add_library(voidmaiz_app STATIC src/shell/shell_ios.mm src/shell/frame.cpp)
+  set_source_files_properties(src/shell/shell_ios.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc) # see voidmaiz_imgui
+  set_target_properties(voidmaiz_app PROPERTIES XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC YES)
+  # Foundation and CoreGraphics by name (2026-11-02): with ARC on, the second CI
+  # run compiled and then failed to link NSString, NSURLSession, CGRectGetMaxY...
+  # UIKit does not bring them to the linker; only clang's module autolinking
+  # would, and CMake's Xcode project does not turn it on for these libraries.
+  target_link_libraries(voidmaiz_app PUBLIC voidmaiz_view
+    "-framework Foundation" "-framework CoreGraphics"
+    "-framework UIKit" "-framework Metal" "-framework MetalKit" "-framework QuartzCore"
+    "-framework CoreLocation" "-framework PhotosUI" "-framework UniformTypeIdentifiers")
+elseif(ANDROID)
+  add_library(voidmaiz_app STATIC src/shell/shell_android.cpp src/shell/frame.cpp
+    "${ANDROID_NDK}/sources/android/native_app_glue/android_native_app_glue.c")
+  target_include_directories(voidmaiz_app PUBLIC "${ANDROID_NDK}/sources/android/native_app_glue")
+  target_link_libraries(voidmaiz_app PUBLIC voidmaiz_view)
+else()
+  add_library(voidmaiz_app STATIC src/shell/shell_desktop.cpp src/shell/frame.cpp)
+  target_link_libraries(voidmaiz_app PUBLIC voidmaiz_view)
+endif()
+if(NOT MSVC)
+  target_compile_options(voidmaiz_app PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra>)
+endif()
+
 # ── Examples & tests (desktop only — Android hosts them through the app) ────
-if(ANDROID)
+if(ANDROID OR IOS)
+  # The one example that runs on a phone: the same file the desktop preview
+  # runs. Android: libmaiz_portable.so (proves the library's NativeActivity
+  # shell compiles). iOS: an app bundle, built by CI on a macOS runner for the
+  # Simulator (.github/workflows/ci.yml, job `ios`).
+  if(MAIZ_BUILD_EXAMPLES)
+    maiz_add_app(maiz_portable SOURCES examples/portable_app.cpp
+      NAME "Void Maiz" BUNDLE_ID org.voidmaiz.portable VERSION 0.1.0)
+    target_link_libraries(maiz_portable PRIVATE voidmaiz_headless) # its document is a Session
+  endif()
   return()
 endif()
+if(MAIZ_BUILD_EXAMPLES)
+# The portable app on a desktop: `maiz_portable --device iphone-16` previews it
+# as that phone (screen, safe area, edge-swipe back), with the mouse as a finger.
+maiz_add_app(maiz_portable SOURCES examples/portable_app.cpp
+  NAME "Void Maiz" BUNDLE_ID org.voidmaiz.portable VERSION 0.1.0)
+target_link_libraries(maiz_portable PRIVATE voidmaiz_headless) # its document is a Session
 
 add_executable(maiz_hello examples/hello_window.cpp)
 target_link_libraries(maiz_hello PRIVATE voidmaiz voidmaiz_imgui)
@@ -362,9 +515,52 @@ target_link_libraries(maiz_network PRIVATE voidmaiz_view)
 # The Allomone test vehicle: script workbench + tagged playground.
 add_executable(maiz_allomone examples/allomone_playground.cpp)
 target_link_libraries(maiz_allomone PRIVATE voidmaiz_view voidmaiz_allomone)
+endif() # MAIZ_BUILD_EXAMPLES
+
+if(NOT MAIZ_BUILD_TESTS)
+  return()
+endif()
 
 # ── Smoke test (Phase 1 exit: replay a state document and walk its nodes) ────
 enable_testing()
+
+# maiz_stage_runtime(<target>): what a test binary needs beside it to START.
+# Void Core's shared library (the `voidcore` target, whichever project supplied
+# it: our imported prebuilt, a parent's, or Void Rancho's source build) and, on
+# MinGW, the toolchain runtime the binary was built against (see "the toolchain
+# runtime" below for why the directory search must win).
+set(_maiz_runtime_dlls "")
+if(WIN32 AND CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+  get_filename_component(_maiz_toolchain_bin "${CMAKE_CXX_COMPILER}" DIRECTORY)
+  foreach(_dll libstdc++-6.dll libgcc_s_seh-1.dll libgcc_s_dw2-1.dll libwinpthread-1.dll)
+    if(EXISTS "${_maiz_toolchain_bin}/${_dll}")
+      list(APPEND _maiz_runtime_dlls "${_maiz_toolchain_bin}/${_dll}")
+    endif()
+  endforeach()
+endif()
+function(maiz_stage_runtime target)
+  if(NOT WIN32)
+    return()
+  endif()
+  if(TARGET voidcore)
+    get_target_property(_type voidcore TYPE)
+    if(_type STREQUAL "SHARED_LIBRARY")
+      add_custom_command(TARGET ${target} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "$<TARGET_FILE:voidcore>" "$<TARGET_FILE_DIR:${target}>")
+    endif()
+  elseif(VOIDCORE_DLL)
+    add_custom_command(TARGET ${target} POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+              "${VOIDCORE_DLL}" "$<TARGET_FILE_DIR:${target}>")
+  endif()
+  if(_maiz_runtime_dlls)
+    add_custom_command(TARGET ${target} POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+              ${_maiz_runtime_dlls} "$<TARGET_FILE_DIR:${target}>"
+      COMMENT "Staging the MinGW runtime beside ${target} (loader-order fix)")
+  endif()
+endfunction()
 add_executable(maiz_smoke tests/embed_smoke.cpp)
 target_link_libraries(maiz_smoke PRIVATE voidmaiz)
 add_test(NAME embed_smoke COMMAND maiz_smoke)
@@ -382,8 +578,37 @@ target_link_libraries(maiz_measures_smoke PRIVATE voidmaiz)
 add_test(NAME measures_smoke COMMAND maiz_measures_smoke)
 
 add_executable(maiz_graph_smoke tests/graph_smoke.cpp)
-target_link_libraries(maiz_graph_smoke PRIVATE voidmaiz)
+target_link_libraries(maiz_graph_smoke PRIVATE voidmaiz_graph) # and nothing else: the claim, linked
 add_test(NAME graph_smoke COMMAND maiz_graph_smoke)
+
+# ── Void Rancho beside us: voidmaiz/rancho.hpp, tested (2026-10-31) ─────────
+# Rancho (the database layer) takes our Core through maiz::RanchoLink and our
+# Leiden through voidmaiz_graph. The link is header-only and we never link
+# Rancho ourselves; this builds the one test that drives both together.
+#
+# ON BY DEFAULT WHEN WE ARE THE TOP-LEVEL PROJECT and Rancho is cloned beside
+# us: since 2026-11-02 Rancho keeps its own suite out of a parent's ctest
+# (RANCHO_BUILD_TESTS is off as a subdirectory) and reads either spelling of
+# VOIDCORE_ROOT, so adding it costs one library and SQLite, nothing else.
+# NEVER when we are a subdirectory: the host adds Rancho itself (Void Hormiga
+# will), and two add_subdirectory calls on one repository collide. A parent
+# that already added Rancho gets the test anyway, through TARGET voidrancho.
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR AND EXISTS "${VOIDRANCHO_ROOT}/CMakeLists.txt")
+  set(_maiz_rancho_default ON)
+else()
+  set(_maiz_rancho_default OFF)
+endif()
+option(MAIZ_WITH_RANCHO "Add ../VoidRancho (top-level builds only) and build rancho_link_smoke" ${_maiz_rancho_default})
+if(MAIZ_WITH_RANCHO AND NOT TARGET voidrancho AND CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR
+   AND EXISTS "${VOIDRANCHO_ROOT}/CMakeLists.txt")
+  add_subdirectory("${VOIDRANCHO_ROOT}" voidrancho)
+endif()
+if(TARGET voidrancho)
+  add_executable(maiz_rancho_link_smoke tests/rancho_link_smoke.cpp)
+  target_link_libraries(maiz_rancho_link_smoke PRIVATE voidmaiz voidrancho)
+  maiz_stage_runtime(maiz_rancho_link_smoke)
+  add_test(NAME rancho_link_smoke COMMAND maiz_rancho_link_smoke)
+endif()
 
 add_executable(maiz_gesture_smoke tests/gesture_smoke.cpp)
 target_link_libraries(maiz_gesture_smoke PRIVATE voidmaiz)
@@ -464,46 +689,9 @@ add_executable(maiz_update_smoke tests/update_smoke.cpp)
 target_link_libraries(maiz_update_smoke PRIVATE voidmaiz_update)
 add_test(NAME update_smoke COMMAND maiz_update_smoke)
 
-add_executable(maiz_lan_smoke tests/lan_smoke.cpp)
-target_link_libraries(maiz_lan_smoke PRIVATE voidmaiz_lan)
-add_test(NAME lan_smoke COMMAND maiz_lan_smoke)
-
-# Stage C: real Cores syncing through Void Palabra over an in-memory lossy wire.
-# Only when Palabra is present — the same condition as the target itself.
-if(VOIDMAIZ_HAVE_NET)
-  add_executable(maiz_net_smoke tests/net_smoke.cpp)
-  target_link_libraries(maiz_net_smoke PRIVATE voidmaiz_net)
-  target_include_directories(maiz_net_smoke PRIVATE vendor)
-  add_test(NAME net_smoke COMMAND maiz_net_smoke)
-
-  # the pipes: two Cores over real TCP sockets (loopback), join / Allow / Deny
-  add_executable(maiz_lanlink_smoke tests/lanlink_smoke.cpp)
-  target_link_libraries(maiz_lanlink_smoke PRIVATE voidmaiz_net)
-  target_include_directories(maiz_lanlink_smoke PRIVATE vendor)
-  add_test(NAME lanlink_smoke COMMAND maiz_lanlink_smoke)
-
-  # the same over Reticulum: host and joiners are separate PROCESSES (Reticulum's
-  # transport is process-wide), real UDP on loopback, join / Allow / Deny / back
-  if(VOIDMAIZ_HAVE_RNS)
-    # Reticulum over a radio (the loopback stand-in for Bluetooth LE), two processes (2026-10-05)
-    add_executable(maiz_radio_smoke tests/radio_smoke.cpp)
-    target_link_libraries(maiz_radio_smoke PRIVATE voidmaiz_net)
-    if(MINGW)
-      target_link_options(maiz_radio_smoke PRIVATE -static)
-    endif()
-    add_test(NAME radio_smoke COMMAND maiz_radio_smoke)
-    add_executable(maiz_rnslink_smoke tests/rnslink_smoke.cpp)
-    target_link_libraries(maiz_rnslink_smoke PRIVATE voidmaiz_net)
-    target_include_directories(maiz_rnslink_smoke PRIVATE vendor)
-    if(MINGW)
-      # it starts itself as a child; a PATH holding another MinGW's libstdc++
-      # would break the child at load (found in Void Palabra's peer, 2026-09-23)
-      target_link_options(maiz_rnslink_smoke PRIVATE -static)
-    endif()
-    add_test(NAME rnslink_smoke COMMAND maiz_rnslink_smoke)
-    set_tests_properties(rnslink_smoke PROPERTIES TIMEOUT 180)
-  endif()
-endif()
+# lan_smoke, net_smoke, lanlink_smoke, radio_smoke and rnslink_smoke moved with
+# their code to Void Hammer (../VoidHammer/net), which registers them under the
+# same names whenever it is built from here.
 
 add_executable(maiz_usergraph_smoke tests/usergraph_smoke.cpp)
 target_link_libraries(maiz_usergraph_smoke PRIVATE voidmaiz)
@@ -538,11 +726,6 @@ target_include_directories(maiz_reduce_conformance PRIVATE vendor)
 add_test(NAME reduce_conformance
          COMMAND maiz_reduce_conformance "${VOIDCORE_ROOT}/../conformance/reduce/cases")
 
-if(WIN32 AND VOIDCORE_DLL)
-  add_custom_command(TARGET maiz_smoke POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${VOIDCORE_DLL}" "$<TARGET_FILE_DIR:maiz_smoke>")
-endif()
 
 # ── the toolchain runtime, next to the binaries (Windows/MinGW) ──────────────
 #
@@ -564,18 +747,8 @@ endif()
 # Copying the runtime next to the executables makes the directory search win, so
 # the binaries load the runtime they were BUILT against no matter which shell
 # launches them — ctest, Git Bash, PowerShell or a double-click.
-if(WIN32 AND CMAKE_CXX_COMPILER_ID MATCHES "GNU")
-  get_filename_component(_maiz_toolchain_bin "${CMAKE_CXX_COMPILER}" DIRECTORY)
-  set(_maiz_runtime_dlls "")
-  foreach(_dll libstdc++-6.dll libgcc_s_seh-1.dll libgcc_s_dw2-1.dll libwinpthread-1.dll)
-    if(EXISTS "${_maiz_toolchain_bin}/${_dll}")
-      list(APPEND _maiz_runtime_dlls "${_maiz_toolchain_bin}/${_dll}")
-    endif()
-  endforeach()
-  if(_maiz_runtime_dlls)
-    add_custom_command(TARGET maiz_smoke POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy_if_different
-              ${_maiz_runtime_dlls} "$<TARGET_FILE_DIR:maiz_smoke>"
-      COMMENT "Staging the MinGW runtime next to the binaries (loader-order fix)")
-  endif()
-endif()
+# Applied by maiz_stage_runtime() (defined beside enable_testing) to every test
+# binary that may be built ON ITS OWN: maiz_smoke, and rancho_link_smoke, which
+# Void Rancho found exiting 127 before main in their superproject (2026-11-02),
+# because nothing had staged anything beside it.
+maiz_stage_runtime(maiz_smoke)

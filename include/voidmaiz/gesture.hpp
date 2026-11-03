@@ -66,6 +66,12 @@ std::string compile_camera(const Camera& cam, std::string_view config_key = "vie
  * agnostic already — it reads only the value, so any view's camera key works. */
 bool parse_camera(std::string_view value, Camera& out);
 
+/* The same pair for an orbit camera: `config set view.camera3d "yaw pitch dist
+ * tx ty tz"`, %.7g, quotes of either kind tolerated on the way back. Refuses a
+ * non-finite field or a distance that is not positive. */
+std::string compile_camera3d(const Camera3D& cam, std::string_view config_key = "view.camera3d");
+bool parse_camera3d(std::string_view value, Camera3D& out);
+
 // ── wires (piece 3) ──────────────────────────────────────────────────────────
 
 /* One end of a would-be wire. port 0 = the principal. */

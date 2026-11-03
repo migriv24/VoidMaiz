@@ -817,6 +817,12 @@ void count_tap(TouchGate& g, double t) {
 void decide(TouchGate& g, float slop) {
     const float dx = g.x - g.x0, dy = g.y - g.y0;
     if (std::fabs(dx) < slop && std::fabs(dy) < slop) return;
+    // from the left edge, rightwards: iOS's back swipe, before anything under it
+    if (g.at_edge && g.mode == TouchGate::Mode::Pending && dx > 0 && dx > std::fabs(dy)) {
+        g.mode = TouchGate::Mode::EdgeBack;
+        g.nsamples = 0;
+        return;
+    }
     // a finger put back down after a tap, dragged where nothing scrolls: a quick zoom
     if (g.second && g.mode == TouchGate::Mode::Pending) {
         g.mode = TouchGate::Mode::QuickZoom;
@@ -871,6 +877,7 @@ void touch_gate_down(TouchGate& g, int pointer, float x, float y, double t) {
         g.nsamples = 0;
         g.ndrag = 0;
         g.hide_in = -1;
+        g.at_edge = g.edge_back_dp > 0.0f && x <= g.edge_back_dp * g.px_per_dp;
         // back down where a tap just lifted, on something that cannot scroll
         // vertically: it may be a double tap or a quick zoom, so it is not a
         // press until it has had the time a long press takes
@@ -921,6 +928,7 @@ void touch_gate_move(TouchGate& g, int pointer, float x, float y, double t) {
         else drag_sample(g, x, y, t);
         break;
     case M::Scrolling: sample(g, g.axis ? y : x, t); break;
+    case M::EdgeBack: sample(g, x, t); break;
     case M::Pinching: g.pinch_moved = std::max(g.pinch_moved, std::hypot(x - g.pinch_ax, y - g.pinch_ay)); break;
     default: break;
     }
@@ -988,6 +996,13 @@ void touch_gate_up(TouchGate& g, int pointer, float x, float y, double t) {
         g.velocity = release_velocity(g, t);
         g.gliding = true; // the frame decides whether it is fast enough to go on
         break;
+    case M::EdgeBack: {
+        sample(g, x, t);
+        const float width = ImGui::GetIO().DisplaySize.x > 1.0f ? ImGui::GetIO().DisplaySize.x : 1.0f;
+        const float v = release_velocity(g, t); // the finger's, px/s: right is positive
+        if (x - g.x0 >= g.edge_commit * width || v >= g.fling_min_dp_s * g.px_per_dp) g.next.back = true;
+        break;
+    }
     default: break;
     }
     if (g.mode == M::Pinching) { // the first finger lifted mid-pinch: ignore the other
@@ -1040,6 +1055,8 @@ void touch_gate_frame(TouchGate& g, float dp) {
         g.gestures.y = g.y0;
     }
     g.pinch.active = false;
+    const float width = io.DisplaySize.x > 1.0f ? io.DisplaySize.x : 1.0f;
+    g.edge_progress = g.mode == M::EdgeBack ? std::clamp((g.x - g.x0) / width, 0.0f, 1.0f) : 0.0f;
     ImGuiWindow* w = g.window ? ImGui::FindWindowByID(g.window) : nullptr;
 
     if (g.mode == M::Scrolling && w) { // the content stays under the finger

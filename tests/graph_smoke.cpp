@@ -81,6 +81,23 @@ int main() {
     CHECK(nmi({0, 0, 1, 1}, {5, 5, 9, 9}) > 0.999);
     CHECK(nmi({0, 1, 0, 1}, {0, 0, 1, 1}) < 1e-9);
 
+    // nodes with no edges, and a graph with none at all (2026-10-27: a host
+    // leaves value edges out of a clustering, so a measure rune is isolated)
+    {
+        std::vector<Edge> es = {{0, 1}, {1, 2}, {2, 0}, {3, 4}, {4, 5}, {5, 3}}; // node 6 alone
+        const Graph lone = Graph::from_edges(7, es);
+        const Hierarchy hl = hierarchy(lone, 2);
+        CHECK(hl.path.size() == 7);
+        CHECK(!hl.path[6].empty());
+        const Graph none = Graph::from_edges(5, {});
+        const Partition pn = leiden(none);
+        CHECK(pn.community.size() == 5);
+        const Hierarchy hn = hierarchy(none, 2);
+        CHECK(hn.path.size() == 5);
+        const Hierarchy empty = hierarchy(Graph::from_edges(0, {}), 2); // crashed before 2026-10-27
+        CHECK(empty.path.empty() && empty.depth == 0);
+    }
+
     // a hierarchy splits only what is larger than the target
     const Hierarchy h = hierarchy(rg, 10);
     CHECK(h.depth == 1);

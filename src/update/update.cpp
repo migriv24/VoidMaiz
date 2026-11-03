@@ -19,6 +19,15 @@
 #include <android/native_activity.h>
 #include <jni.h>
 #endif
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
+/* iOS has no processes to spawn: system() and popen() are unavailable in its
+ * SDK, so nothing here may shell out there. An iOS app never updates itself
+ * either (the App Store does), so what is lost is exactly what is forbidden. */
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+#define MAIZ_NO_SHELL 1
+#endif
 
 namespace maiz::update {
 
@@ -91,6 +100,10 @@ std::string shell_quote(const std::string& s) {
 }
 
 std::string run_capture(const std::string& cmd) {
+#if defined(MAIZ_NO_SHELL)
+    (void)cmd;
+    return {};
+#else
 #if defined(_WIN32)
     // cmd.exe strips the first and last quote of a line that starts with one and
     // holds more (`"C:\...\tar.exe" -xf "a" -C "b"` loses both ends). One more
@@ -109,6 +122,7 @@ std::string run_capture(const std::string& cmd) {
     pclose(f);
 #endif
     return out;
+#endif // MAIZ_NO_SHELL
 }
 
 } // namespace
@@ -128,7 +142,17 @@ std::string system_tar() {
 }
 
 std::string platform_tag() {
-#if defined(__ANDROID__)
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+    /* An iPhone is not a Mac. Without this branch it answered "macos-arm64"
+     * (both are __APPLE__ on arm64) and would have been offered a Mac build
+     * (found 2026-10-17, before any iOS build existed). No feed carries an iOS
+     * artifact, and none should: the App Store is how an iOS app updates. */
+#if TARGET_OS_SIMULATOR
+    return "ios-simulator";
+#else
+    return "ios-arm64";
+#endif
+#elif defined(__ANDROID__)
 #if defined(__aarch64__)
     return "android-arm64";
 #else
@@ -351,7 +375,7 @@ bool safe_url(const std::string& u) {
     return true;
 }
 
-Http curl_http() {
+Http curl_http_impl() {
     return [](const std::string& url, const fs::path& to) {
         HttpResult r;
         if (!safe_url(url)) {
@@ -476,7 +500,11 @@ bool launch_detached(const fs::path& binary) {
     std::string cmd = "cd " + shell_quote(binary.parent_path().string()) + " && nohup " +
                       shell_quote(binary.string()) + " >/dev/null 2>&1 &";
 #endif
+#if defined(MAIZ_NO_SHELL)
+    return false;
+#else
     return std::system(cmd.c_str()) == 0;
+#endif
 }
 
 bool launch_installer(const fs::path& file) { return launch_detached(file); }
@@ -588,7 +616,7 @@ jobject app_context(JNIEnv* env, ANativeActivity* a) {
 
 } // namespace
 
-Http android_http(ANativeActivity* activity, const std::string& user_agent) {
+Http android_http_impl(ANativeActivity* activity, const std::string& user_agent) {
     return [activity, user_agent](const std::string& url, const fs::path& to) {
         HttpResult r;
         if (!safe_url(url)) {
@@ -719,7 +747,7 @@ bool android_install_package(ANativeActivity* activity, const fs::path& apk, std
 
 #else
 
-Http android_http(ANativeActivity*, const std::string&) { return {}; }
+Http android_http_impl(ANativeActivity*, const std::string&) { return {}; }
 
 bool android_install_package(ANativeActivity*, const fs::path&, std::string* error) {
     if (error) *error = "not Android";
@@ -870,3 +898,20 @@ void Updater::skip_offered() {
 }
 
 } // namespace maiz::update
+
+/* The seam's public names (voidmaiz/http.hpp). */
+namespace maiz {
+Http curl_http() {
+#if defined(MAIZ_NO_SHELL)
+    return {};
+#else
+    return update::curl_http_impl();
+#endif
+}
+Http android_http(ANativeActivity* activity, const std::string& user_agent) {
+    return update::android_http_impl(activity, user_agent);
+}
+#if !(defined(__APPLE__) && TARGET_OS_IPHONE)
+Http ios_http(const std::string&) { return {}; } // the iOS shell defines the real one
+#endif
+} // namespace maiz

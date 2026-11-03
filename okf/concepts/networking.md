@@ -7,6 +7,16 @@ tags: [status:current, audience:dev, audience:host, confidence:measured]
 timestamp: 2026-09-18T00:00:00Z
 ---
 
+> **2026-10-17: the engine moved to Void Hammer.** Stage C below
+> (`voidmaiz_net`: `Network`, `LanSession`, `RnsSession`) and the transports
+> (`voidmaiz_lan`, the radios) now live in `../VoidHammer/net`
+> (`VoidHammer:/concepts/networking.md`), with their `maiz::` names, forwarding
+> headers and alias targets, so nothing a host wrote changes. What this page
+> calls Void Maiz's share is unchanged and is now all Void Maiz keeps: **what
+> networking looks like** (surfaces, marks, presence, claims, the share filter,
+> the session panels). The Q30 line still holds: Void Maiz owns what networking
+> looks like, Palabra owns what networking is; reaching devices is Void Hammer's.
+
 Raised by Void Hormiga after its two-machine LAN test. The author's direction:
 *"a general universal networking ability should exist for any void maiz based
 application."* The author then clarified what to build: **not "Hormiga's
@@ -236,6 +246,21 @@ An application's "join" flow must not seed the document.
 with different JSON key orders. `voidpalabra::slice_hash` is the right equality;
 printed JSON is not. The test's first comparison reported a divergence that was
 only `{"image","text"}` against `{"text","image"}`.
+
+**A surface's id is the concept, never the form** (Void Hormiga, 2026-09-23,
+now the library's rule). A phone's Data screen and a desktop's Data window both
+declare `table:data`, so a peer sees "in Data" whichever device someone is on.
+What differs per device is the surface's **form** (`window`, `screen`, `sheet`,
+`panel`, `bar`: `Surfaces::declare`'s fourth argument), and a rule that wants a
+difference reads it (`shown_as`, [portable apps](/concepts/portable-apps.md)).
+An application with two front-ends that names its surfaces after their forms
+has two answers to "where is Maria", and they never match.
+
+**One Roster, as many feeders as there are transports** (answering Void
+Hormiga, 2026-09-20). A host that hears members by its own beacon before any
+link exists is right to show them: "here, not yet connected" is a real state.
+Feed the same Roster from the beacon and from `Network`; `Network`'s own roster
+is a convenience for a host with no other transport, not a second truth.
 
 # What this does not prove
 
