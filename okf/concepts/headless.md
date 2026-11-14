@@ -416,12 +416,28 @@ the in-app console and the headless agent literally the same thing — stays
 it turns every application into a server with a port, a lifetime and an
 authorization question.
 
+# Where the bytes live (`HostApp::document_io`, 2026-11-09)
+
+The state document is a JSON file at `state_path` unless the application says otherwise. An
+application whose document is a **database** (Void Squid's `.squid`, a Void Rancho store with
+its own deed, since the author ruled that every Void application's database structures build on
+Rancho) gives `HostApp::document_io`: `load(path)` answers whether there is a document and its
+JSON text, `save(path, doc, error)` writes it. Session keeps the rest: the lock and journal
+beside `state_path`, the refusal of anything that is not a JSON object, precedence, and `diff`
+and `revert`, which are Core's against the document's `_baseline`.
+
+Both or neither: a loader without a saver is a document that silently stops persisting, so a
+Session given one refuses to start. The seam is on `HostApp`, not `SessionOptions`, because
+`run_cli` builds its own options and the window and the CLI must agree on the format of the
+same file. Tested in `maiz_headless --selftest` §9.
+
 # Staging
 
 - **Phase H0 — the session and the front-end.** `HostApp`, `Session` (load →
   dispatch → save, with attribution and the advisory lock), and `run_cli`:
   one-shot, script file, stdin, REPL, `--json`. The state document is the whole
-  persistence story.
+  persistence story (since 2026-11-09 a host may say where its bytes live:
+  `HostApp::document_io`).
 - **Phase H1 — the briefing.** `capabilities()` as JSON, assembled from `help`,
   `glyphs`, `mantles`, `ActionRegistry::manifest()`, predicate names, and the
   OKF root.

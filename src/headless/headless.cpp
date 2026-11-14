@@ -466,15 +466,39 @@ bool Session::start() {
      * folder" impossible. An UNREADABLE or MALFORMED file IS an error: Core's
      * own contract silently yields the empty state for a non-object, and
      * inheriting that here would answer "your document is corrupt" by throwing
-     * it away. */
-    if (fs::exists(s.state)) {
+     * it away.
+     *
+     * The host's DocumentIO, when it gives one, replaces only the reading; the
+     * same refusals apply to what it hands back. */
+    const DocumentIO& io = s.app.document_io;
+    if (io.given() && !(io.load && io.save)) {
+        s.err = "the application gives a document loader without a saver, or a saver "
+                "without a loader; refusing to start rather than lose what is saved";
+        close();
+        return false;
+    }
+    bool found = false;
+    std::string doc;
+    if (io.given()) {
+        DocumentLoad loaded = io.load(s.opts.state_path);
+        if (!loaded.error.empty()) {
+            s.err = "cannot read " + s.state.string() + ": " + loaded.error;
+            close();
+            return false;
+        }
+        found = loaded.found;
+        doc = std::move(loaded.doc);
+    } else if (fs::exists(s.state)) {
         bool ok = true;
-        std::string doc = slurp(s.state, ok);
+        doc = slurp(s.state, ok);
         if (!ok) {
             s.err = "cannot read " + s.state.string();
             close();
             return false;
         }
+        found = true;
+    }
+    if (found) {
         CJson probe{parse_or_null(doc)};
         if (!probe || !cJSON_IsObject(probe.p)) {
             s.err = "the state document at " + s.state.string() +
@@ -704,6 +728,12 @@ bool Session::save() {
         return false;
     }
     std::string doc = s.core.export_state();
+    if (s.app.document_io.save) {
+        s.err.clear();
+        if (s.app.document_io.save(s.opts.state_path, doc, s.err)) return true;
+        if (s.err.empty()) s.err = "the application could not save " + s.state.string();
+        return false;
+    }
     if (!spew_atomic(s.state, doc, s.err)) return false;
     return true;
 }

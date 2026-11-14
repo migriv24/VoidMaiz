@@ -187,6 +187,7 @@ add_library(voidmaiz STATIC
   src/presence/claims.cpp
   src/action/action.cpp
   src/usergraph/usergraph.cpp
+  src/overview/overview.cpp   # a graph too large to draw, in bounded work (voidmaiz/overview.hpp)
   src/allomone/host_predicates.cpp
   src/allomone/sentinel_scene.cpp
   vendor/cJSON.c
@@ -609,6 +610,10 @@ if(TARGET voidrancho)
   maiz_stage_runtime(maiz_rancho_link_smoke)
   add_test(NAME rancho_link_smoke COMMAND maiz_rancho_link_smoke)
 endif()
+
+add_executable(maiz_overview_smoke tests/overview_smoke.cpp)
+target_link_libraries(maiz_overview_smoke PRIVATE voidmaiz)
+add_test(NAME overview_smoke COMMAND maiz_overview_smoke)
 
 add_executable(maiz_gesture_smoke tests/gesture_smoke.cpp)
 target_link_libraries(maiz_gesture_smoke PRIVATE voidmaiz)

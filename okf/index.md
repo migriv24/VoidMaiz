@@ -149,6 +149,11 @@ persistence are inherited from Void Core rather than bolted on.
   `voidmaiz_lan` / `voidmaiz_net` remain as aliases. Verified the same day
   against Interaction Combinators and Void Hormiga. Void Maiz keeps what
   networking looks like (below).
+- **[The overview](/concepts/overview.md)** (2026-11-05, Void Hormiga's ask):
+  `voidmaiz/overview.hpp`, a graph too large to draw drawn in bounded work: a
+  tree of groups (Leiden, merged under a size cap, bundled, sliced), a cut for
+  what is open, and a Barnes–Hut layout per connected piece, then packed.
+  UI-free, deterministic, and view state only.
 - **[Void Rancho, beside us](/concepts/rancho.md)** (2026-10-31): the family's
   database layer (`../VoidRancho`, founded 2026-10-30, Void Hormiga's store
   extracted) and the three-part seam with it. **One Core**: `maiz::RanchoLink`

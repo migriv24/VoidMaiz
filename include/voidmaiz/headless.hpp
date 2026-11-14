@@ -117,6 +117,35 @@ using EffectEmit = std::function<void(std::string_view line)>;
 using StreamingEffectHandler = std::function<std::string(
     std::string_view op, std::string_view args, const EffectEmit& emit)>;
 
+/* ── where the document's bytes live ─────────────────────────────────────────
+ *
+ * By default a Session's document is a JSON file at `state_path`. An application
+ * whose document lives in a DATABASE (Void Rancho, the family's database layer:
+ * a `.squid` that is a Rancho store carrying its own deed, Void Squid's S37)
+ * supplies how the document is loaded and saved, and Session keeps everything
+ * else: the lock and the journal beside `state_path`, the refusal of a document
+ * that is not a JSON object, a person outranking an agent, `diff` and `revert`
+ * (which are Core's, against the document's own `_baseline`).
+ *
+ * BOTH OR NEITHER. A host that can load and not save (or the reverse) would be a
+ * document that silently stops persisting, so a Session given only one refuses to
+ * start. The path handed to each is `state_path` exactly; the format is the
+ * host's to recognise (a JSON file left from before is the host's to read too).
+ *
+ * ON HostApp, NOT SessionOptions, on purpose: `run_cli` builds its own options
+ * from argv, and a GUI and a CLI that disagree about the format of the same file
+ * is the stale-data failure `state_path`'s comment warns about. */
+struct DocumentLoad {
+    bool found = false;  // false with an empty `error`: no document yet, a fresh one
+    std::string doc;     // the state document, as JSON text, when found
+    std::string error;   // non-empty: the document exists and could not be read
+};
+struct DocumentIO {
+    std::function<DocumentLoad(const std::string& path)> load;
+    std::function<bool(const std::string& path, const std::string& doc, std::string& error)> save;
+    bool given() const { return load || save; }
+};
+
 /* ── the application, declared once ──────────────────────────────────────────
  *
  * Everything a front-end needs to BE this application. A GUI main() and a
@@ -190,6 +219,10 @@ struct HostApp {
      * does not have to link `voidmaiz_allomone`; a host that has one passes
      * `preds.names()`. */
     std::vector<std::string> predicates;
+
+    /* How the state document is loaded and saved (see DocumentIO). Empty: a JSON
+     * file at `state_path`, as always. */
+    DocumentIO document_io;
 };
 
 /* ── may this session reach the world? ───────────────────────────────────────

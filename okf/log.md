@@ -7933,3 +7933,56 @@ linker. With both named, run 41548907282 (b2f2b8a) is **green on all four jobs**
 
 This is the first time `shell_ios.mm` has been seen running anywhere ([iOS](/concepts/ios.md)).
 That cleared the way for `main`: `ios` is merged into it.
+
+## 2026-11-05 — The overview: a graph too large to draw (Void Hormiga's ask)
+
+Void Hormiga opened its stress database (5×10^5 runes) on Void Rancho's store,
+and its connections view broke. It held 59,719 runes, and its all-pairs layout
+cost 3.6×10^9 steps an iteration. The author: *"we'll have to rethink how we do
+that and open it (maybe that's a maiz thing, but unsure)."* The part that needs
+no host is ours, and it is built here.
+
+**Built:** `include/voidmaiz/overview.hpp`, `src/overview/overview.cpp`, and
+`tests/overview_smoke.cpp` ([overview](/concepts/overview.md)), in the
+`voidmaiz` library:
+- the tree of groups: Leiden, split to a leaf size, merged upwards under a size
+  cap, the unlinked bundled, the too-wide sliced;
+- `cut`, `body_of` and `lift`;
+- a Barnes–Hut force step laid out per connected piece, and `pack`.
+
+**Two things were found by running it on the stress database, not by the test:**
+- lowering Leiden's resolution to merge communities fused the part into one
+  group of 56,611, so merging is now along ties under a size cap;
+- global repulsion pushed 130 unlinked pieces into a far ring, so layout is now
+  per component, and the components are packed.
+
+The database's half of an overview, summaries of clusters that are not loaded,
+is Void Rancho's, and Void Hormiga asked for it.
+
+## 2026-11-09 — A Session whose file is a database (`HostApp::document_io`)
+
+Written from the Void Squid session, at the author's direction (*"you can work on stuff in
+maiz"*), after the author ruled that every Void application's core database structures rely on
+Void Rancho, *"like a base class sort of"*. Void Squid's `.squid` is now a Rancho store carrying
+its own deed, and `SessionOptions::state_path` was "the whole persistence story".
+
+**Built:** `HostApp::document_io` (`DocumentIO`: `load(path) -> DocumentLoad`, `save(path, doc,
+error)`), in `include/voidmaiz/headless.hpp` and `src/headless/headless.cpp`
+([headless](/concepts/headless.md), "Where the bytes live"):
+- unset, nothing changes: a JSON file at `state_path`;
+- given, Session reads and writes the document through the host and keeps everything else:
+  the lock and the journal beside `state_path`, the refusal of a document that is not a JSON
+  object, a person outranking an agent, and `diff` / `revert` (Core's, against `_baseline`);
+- both or neither: a host that gives one alone is refused at `start`;
+- on `HostApp`, not `SessionOptions`, because `run_cli` builds its own options from argv, and
+  a window and a CLI that disagree about a file's format is the stale-data failure.
+
+**Tested** in `maiz_headless --selftest` (§9, a map as the database): a fresh document saved to
+the host and to no JSON file; the journal and the lock still Session's; a second session reads
+it back and `revert` reaches the baseline; a non-object from the host is refused and left
+alone; a host's read error is reported with its reason; half a seam is refused. Void Squid's own
+test drives its `.squid` through it end to end.
+
+**Found, not ours:** `reduce_conformance` fails 17/25 against Void Core's current cases, which
+use a reducer rule (`patch`) our reducer does not know. Core moved ahead; nothing in this entry
+touches the reducer. 31 of 32 tests pass.

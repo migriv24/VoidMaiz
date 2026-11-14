@@ -34,6 +34,7 @@
 #include <fstream>
 #include <iterator>
 #include <iostream>
+#include <map>
 #include <string>
 
 namespace fs = std::filesystem;
@@ -683,6 +684,84 @@ static void selftest() {
         // Still there, untouched.
         REQUIRE(fs::exists(bad));
         REQUIRE(fs::file_size(bad) > 0);
+    }
+
+    // ── 9. A document that lives somewhere else (HostApp::document_io) ───────
+    // Void Squid's `.squid` becomes a Void Rancho store (2026-11-09). Session
+    // keeps the lock, the journal and every refusal; only the bytes move. Here
+    // the "database" is a map, so the test needs nothing but itself.
+    {
+        std::map<std::string, std::string> db;
+        int loads = 0, saves = 0;
+        HostApp other = build_app();
+        other.document_io.load = [&](const std::string& path) {
+            ++loads;
+            DocumentLoad l;
+            if (auto it = db.find(path); it != db.end()) { l.found = true; l.doc = it->second; }
+            return l;
+        };
+        other.document_io.save = [&](const std::string& path, const std::string& doc, std::string&) {
+            ++saves;
+            db[path] = doc;
+            return true;
+        };
+        const std::string at = (dir / "elsewhere.squid").string();
+        {   // absent: a fresh document, saved to the host, never to a JSON file
+            SessionOptions o;
+            o.state_path = at;
+            Session s(other, o);
+            REQUIRE(s.start());
+            REQUIRE(s.dispatch("mantle new work").ok);
+            REQUIRE(s.dispatch("rune new note kept").ok);
+            s.close();
+            REQUIRE(s.error().empty());
+        }
+        REQUIRE(loads == 1 && saves == 1);
+        REQUIRE(db.count(at) == 1);
+        REQUIRE(!fs::exists(at));                 // no JSON written behind the host's back
+        REQUIRE(fs::exists(at + ".log"));         // the journal is still Session's
+        REQUIRE(!fs::exists(at + ".lock"));       // and so is the lock, released
+        {   // a second session reads it back, and revert still reaches the baseline
+            SessionOptions o;
+            o.state_path = at;
+            Session s(other, o);
+            REQUIRE(s.start());
+            REQUIRE(s.dispatch("cat kept").ok);
+            REQUIRE(s.dispatch("rune new note scratch").ok);
+            REQUIRE(s.dispatch("revert").ok);
+            REQUIRE(!s.dispatch("cat scratch").ok);
+            s.close();
+        }
+        {   // what the host hands back must still be a JSON object
+            db[at] = "not a document";
+            SessionOptions o;
+            o.state_path = at;
+            Session s(other, o);
+            REQUIRE(!s.start());
+            REQUIRE(s.error().find("Refusing") != std::string::npos);
+            REQUIRE(db[at] == "not a document");  // untouched
+        }
+        {   // a host that cannot read it says why, and nothing is saved over it
+            HostApp failing = other;
+            failing.document_io.load = [](const std::string&) {
+                DocumentLoad l;
+                l.error = "the drive is not plugged in";
+                return l;
+            };
+            SessionOptions o;
+            o.state_path = at;
+            Session s(failing, o);
+            REQUIRE(!s.start());
+            REQUIRE(s.error().find("the drive is not plugged in") != std::string::npos);
+        }
+        {   // half a seam is refused
+            HostApp half = build_app();
+            half.document_io.load = other.document_io.load;
+            SessionOptions o;
+            o.state_path = (dir / "half.squid").string();
+            Session s(half, o);
+            REQUIRE(!s.start());
+        }
     }
 
     fs::remove_all(dir, ec);
