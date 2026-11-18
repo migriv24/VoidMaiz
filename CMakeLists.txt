@@ -428,6 +428,7 @@ add_library(voidmaiz_view STATIC
   src/view/code.cpp
   src/view/face.cpp
   src/view/inspector.cpp
+  src/view/listselect.cpp   # every list selects the same way (okf/concepts/conventions.md)
   src/view/mobile.cpp
   src/view/nav.cpp
   src/view/netview.cpp
@@ -632,6 +633,11 @@ add_test(NAME textinput_smoke COMMAND maiz_textinput_smoke)
 add_executable(maiz_textinput_view_smoke tests/textinput_view_smoke.cpp)
 target_link_libraries(maiz_textinput_view_smoke PRIVATE voidmaiz_view)
 add_test(NAME textinput_view_smoke COMMAND maiz_textinput_view_smoke)
+
+# the list contract: click / Ctrl / Shift / Ctrl+A / Escape / click away (okf/concepts/conventions.md)
+add_executable(maiz_select_smoke tests/select_smoke.cpp)
+target_link_libraries(maiz_select_smoke PRIVATE voidmaiz_view)
+add_test(NAME select_smoke COMMAND maiz_select_smoke)
 
 # the touch gate's map gestures on a real ImGui, and the location stand-in (2026-10-04)
 add_executable(maiz_touch_gate_smoke tests/touch_gate_smoke.cpp)

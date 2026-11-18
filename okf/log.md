@@ -7986,3 +7986,34 @@ test drives its `.squid` through it end to end.
 **Found, not ours:** `reduce_conformance` fails 17/25 against Void Core's current cases, which
 use a reducer rule (`patch`) our reducer does not know. Core moved ahead; nothing in this entry
 touches the reducer. 31 of 32 tests pass.
+
+
+# Conventions: every list selects the same way (2026-11-17)
+
+Void Hormiga's author, asking for Shift and Ctrl selection in one of its map
+panels: *"UI/UX features like that should just come with any sort of list view
+that exists ... build systems such that they are in every list thing ... for an
+application where you essentially construct the app itself as well, we should
+definitely have some rules and lines to hold."* So the selection behaviour is a
+contract of the view library, not a feature of a list
+([conventions](/concepts/conventions.md)).
+
+- **`voidmaiz/select.hpp`** (model tier): a selection is names;
+  `apply_select` applies ImGui's SetAll/SetRange requests in a list's order;
+  `select_click` is the same rule for surfaces ImGui's multi-select cannot
+  drive (a canvas, a phone list in selection mode).
+- **`voidmaiz/listselect.hpp`** (view tier): `ListSelect` wraps
+  `BeginMultiSelect`/`EndMultiSelect` (ImGui 1.91+) for a host's
+  `std::vector<std::string>` selection. `begin` / `item` / `end`; options for a
+  grid (2D box select), a single-choice list, and several lists in one window;
+  `plain_click()` and `delete_pressed()` for the host's own meaning of "open" and
+  "delete".
+- **Tested** (`tests/select_smoke.cpp`): the model rule, then a real ImGui list
+  driven headless: click, Shift, Ctrl on and off, Ctrl+A, Escape, a click on
+  empty space, and a click from a touch screen.
+
+**Found in Hormiga while adopting it, and worth knowing for any host:** a
+selectable drawn with `ImGuiSelectableFlags_AllowOverlap` and other items laid
+over it is only pressed if it was hovered the frame before. A mouse always is; a
+tap (a touch screen, or a scripted harness) is not, so the row never selected.
+Paint a row's contents onto one plain selectable instead.

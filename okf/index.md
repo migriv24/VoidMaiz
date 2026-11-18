@@ -149,6 +149,13 @@ persistence are inherited from Void Core rather than bolted on.
   `voidmaiz_lan` / `voidmaiz_net` remain as aliases. Verified the same day
   against Interaction Combinators and Void Hormiga. Void Maiz keeps what
   networking looks like (below).
+- **[Conventions](/concepts/conventions.md)** (2026-11-17, Void Hormiga's ask):
+  what every list and canvas in a Void application does, whoever built the
+  screen. Lists: `ListSelect` (`voidmaiz/listselect.hpp`) over ImGui's
+  multi-select gives click, Ctrl, Shift, Ctrl+A, Escape, click away, box select
+  and a Delete signal; the model rule is `voidmaiz/select.hpp`. Canvases: the
+  wheel zooms, the middle button pans, Ctrl or Shift adds, a click on nothing
+  clears. The phone's translation is designed.
 - **[The overview](/concepts/overview.md)** (2026-11-05, Void Hormiga's ask):
   `voidmaiz/overview.hpp`, a graph too large to draw drawn in bounded work: a
   tree of groups (Leiden, merged under a size cap, bundled, sliced), a cut for
