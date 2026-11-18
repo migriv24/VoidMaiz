@@ -23,6 +23,9 @@ way to draw the thing: a host builds its lists on `ListSelect` and gets all of
 it, and a screen built from data is drawn by components built on `ListSelect`,
 so it cannot opt out.
 
+**On a Mac, Ctrl is Cmd** (ImGui's macOS behaviour swaps them): Cmd+click,
+Cmd+A, and Cmd on a canvas, as every Mac application does.
+
 ## Lists: anything shown as rows or cards that a person can act on
 
 | input | does | built |

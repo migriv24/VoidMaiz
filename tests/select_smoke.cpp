@@ -119,6 +119,11 @@ int main() {
     io.IniFilename = nullptr;
     io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures;
     io.Fonts->AddFontDefault();
+    /* ImGui's macOS behaviour (on by default where __APPLE__ is defined) swaps Ctrl
+     * and Cmd, so on a Mac the contract's Ctrl is Cmd: Cmd+click, Cmd+A. This test
+     * presses Ctrl, so it asks for the same keys on every platform (found on the
+     * macOS runner, 2026-11-18). */
+    io.ConfigMacOSXBehaviors = false;
     settle();
 
     click_at(row_pos[1]);

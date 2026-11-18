@@ -8017,3 +8017,13 @@ selectable drawn with `ImGuiSelectableFlags_AllowOverlap` and other items laid
 over it is only pressed if it was hovered the frame before. A mouse always is; a
 tap (a touch screen, or a scripted harness) is not, so the row never selected.
 Paint a row's contents onto one plain selectable instead.
+
+
+# select_smoke on macOS: Ctrl is Cmd there (2026-11-18)
+
+Void Hormiga's CI ran `select_smoke` on macOS and Ctrl+click and Ctrl+A did
+nothing. ImGui's macOS behaviour (`ConfigMacOSXBehaviors`, on by default where
+`__APPLE__` is defined) swaps Ctrl and Cmd, so on a Mac the list contract is
+Cmd+click and Cmd+A, as it should be. The test pressed Ctrl, so it now asks for
+the same keys everywhere (`io.ConfigMacOSXBehaviors = false`), and
+[conventions](/concepts/conventions.md) says Ctrl is Cmd on a Mac.
